@@ -20,7 +20,7 @@ interface Props {
 export function GranularityToggle({ value, onChange, maxLevel }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Show in chart</span>
+      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Time units</span>
       <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
         {GRANULARITY_ORDER.map((g, level) => {
           const active = g === value

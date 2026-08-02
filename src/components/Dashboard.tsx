@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchSheetData } from '../lib/sheet'
-import { aggregateMerged, type ChartRow, type Granularity, type SeriesSpec } from '../lib/data'
+import {
+  aggregateMerged,
+  bucketDates,
+  type ChartRow,
+  type Granularity,
+  type SeriesSpec,
+} from '../lib/data'
 import { metricMeta } from '../lib/metricMeta'
 import { buildModel, discoverTabNames, parseTabName, type WorkbookModel } from '../lib/workbook'
 import { capitalize, prettyCategory, seriesLabel } from '../lib/labels'
@@ -401,9 +407,36 @@ export function Dashboard() {
     [sheetStates, range, allowedDates, granularity, salesAgg],
   )
 
+  // Days (from the days sheet) that fall in the range AND pass the day filters.
+  const matchingDays = useMemo(() => {
+    if (!dayAttributes) return null
+    const startT = range.start.getTime()
+    const endT = range.end.getTime()
+    const out: Date[] = []
+    for (const t of dayAttributes.byDate.keys()) {
+      if (t < startT || t > endT) continue
+      if (allowedDates && !allowedDates.has(t)) continue
+      out.push(new Date(t))
+    }
+    return out
+  }, [dayAttributes, range, allowedDates])
+
+  const dayCountByT = useMemo(
+    () => (matchingDays ? bucketDates(matchingDays, granularity) : null),
+    [matchingDays, granularity],
+  )
+  const totalMatchingDays = matchingDays?.length ?? null
+
+  // Attach each bucket's matching-day count so the tooltip can report it.
+  const withDayCounts = useCallback(
+    (rows: ChartRow[]): ChartRow[] =>
+      dayCountByT ? rows.map((r) => ({ ...r, _days: dayCountByT.get(r.t) ?? 0 })) : rows,
+    [dayCountByT],
+  )
+
   const chartGroups = useMemo<ChartGroup[]>(() => {
     if (series.length === 0) return []
-    if (overlap) return [{ key: 'all', title: null, series, data: buildData(series) }]
+    if (overlap) return [{ key: 'all', title: null, series, data: withDayCounts(buildData(series)) }]
 
     const groups: ChartGroup[] = []
     if (discovery.status === 'ready') {
@@ -411,16 +444,26 @@ export function Dashboard() {
         if (!includedCities.has(city)) continue
         const citySeries = series.filter((s) => parseTabName(s.sheet).city === city)
         if (citySeries.length) {
-          groups.push({ key: city, title: capitalize(city), series: citySeries, data: buildData(citySeries) })
+          groups.push({
+            key: city,
+            title: capitalize(city),
+            series: citySeries,
+            data: withDayCounts(buildData(citySeries)),
+          })
         }
       }
     }
     const globalSeries = series.filter((s) => parseTabName(s.sheet).city === null)
     if (globalSeries.length) {
-      groups.push({ key: '__global__', title: 'Markets', series: globalSeries, data: buildData(globalSeries) })
+      groups.push({
+        key: '__global__',
+        title: 'Markets',
+        series: globalSeries,
+        data: withDayCounts(buildData(globalSeries)),
+      })
     }
     return groups
-  }, [series, overlap, buildData, discovery, includedCities])
+  }, [series, overlap, buildData, withDayCounts, discovery, includedCities])
 
   if (discovery.status === 'loading') {
     return <div className="py-20 text-center text-slate-400">Loading workbook…</div>
@@ -504,6 +547,16 @@ export function Dashboard() {
               </div>
             </div>
           </div>
+
+          {totalMatchingDays !== null && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {totalMatchingDays.toLocaleString()}
+              </span>{' '}
+              day{totalMatchingDays === 1 ? '' : 's'} match the current range &amp; filters
+              {granularity !== 'all' && ' (hover a point for its day count)'}
+            </p>
+          )}
 
           {/* Selected chips — color picker + label + remove */}
           {series.length > 0 && (

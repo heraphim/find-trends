@@ -182,6 +182,17 @@ function bucketAggregate(
     .sort((a, b) => a.t - b.t)
 }
 
+// Count how many of the given dates fall into each bucket (same bucketing as
+// the charts), so a point's aggregate can report the days behind it.
+export function bucketDates(dates: Date[], g: Granularity): Map<number, number> {
+  const m = new Map<number, number>()
+  for (const d of dates) {
+    const k = bucketStart(d, g).getTime()
+    m.set(k, (m.get(k) ?? 0) + 1)
+  }
+  return m
+}
+
 // Merge every selected series into ONE dataset of actual values on a shared
 // time axis (units may differ — the chart shows each series' unit per point).
 export function aggregateMerged(

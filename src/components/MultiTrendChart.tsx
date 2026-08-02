@@ -39,7 +39,9 @@ function ChartTooltip({
   colors: ReturnType<typeof chartColors>
 }) {
   if (!active || !payload?.length) return null
-  const full = (payload[0] as unknown as { payload: ChartRow }).payload.full
+  const row = (payload[0] as unknown as { payload: ChartRow }).payload
+  const full = row.full
+  const days = row._days as number | undefined
   const labelById = new Map(series.map((s) => [s.id, s.label]))
   const unitById = new Map(series.map((s) => [s.id, s.unit]))
   return (
@@ -47,7 +49,14 @@ function ChartTooltip({
       className="rounded-lg border px-3 py-2 text-xs shadow-lg"
       style={{ background: colors.surface, borderColor: colors.border, color: colors.ink }}
     >
-      <div className="mb-1 font-medium">{full}</div>
+      <div className="mb-1 font-medium">
+        {full}
+        {days !== undefined && (
+          <span style={{ color: colors.inkMuted }} className="ml-1 font-normal">
+            · {days} day{days === 1 ? '' : 's'}
+          </span>
+        )}
+      </div>
       <div className="flex flex-col gap-0.5">
         {payload.map((p) => (
           <div key={p.dataKey} className="flex items-center gap-2">
