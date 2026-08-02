@@ -5,40 +5,17 @@ export interface DataRow {
 }
 
 export type Granularity = 'daily' | 'weekly' | 'monthly'
-export type Agg = 'avg' | 'sum'
+export type ColumnKind = 'metric' | 'event'
 
-export interface Metric {
-  key: string // column name in the sheet/CSV
-  label: string
-  unit: string
-  agg: Agg // how to roll daily values up to week/month
-  decimals: number
-  transform?: (v: number) => number // per-row unit conversion
+// A column and whether it's a plottable number or a categorical "event".
+export interface ColumnInfo {
+  key: string
+  kind: ColumnKind
 }
 
-// Curated, most-useful metrics from the weather sheet.
-export const METRICS: Metric[] = [
-  { key: 'temp_mean', label: 'Mean temperature', unit: '°C', agg: 'avg', decimals: 1 },
-  { key: 'temp_max', label: 'Max temperature', unit: '°C', agg: 'avg', decimals: 1 },
-  { key: 'temp_min', label: 'Min temperature', unit: '°C', agg: 'avg', decimals: 1 },
-  { key: 'apparent_temp_mean', label: 'Feels-like (mean)', unit: '°C', agg: 'avg', decimals: 1 },
-  { key: 'precipitation', label: 'Precipitation', unit: 'mm', agg: 'sum', decimals: 1 },
-  { key: 'rain', label: 'Rain', unit: 'mm', agg: 'sum', decimals: 1 },
-  { key: 'snowfall', label: 'Snowfall', unit: 'cm', agg: 'sum', decimals: 1 },
-  { key: 'wind_max', label: 'Max wind', unit: 'km/h', agg: 'avg', decimals: 1 },
-  {
-    key: 'sunshine_duration',
-    label: 'Sunshine',
-    unit: 'h',
-    agg: 'avg',
-    decimals: 1,
-    transform: (v) => v / 3600, // seconds → hours
-  },
-  { key: 'solar_radiation', label: 'Solar radiation', unit: '', agg: 'avg', decimals: 2 },
-]
-
-export function metricByKey(key: string): Metric {
-  return METRICS.find((m) => m.key === key) ?? METRICS[0]
+export interface SheetData {
+  rows: DataRow[]
+  columns: ColumnInfo[]
 }
 
 // Parse the sheet's "DD-MM-YY" date. Returns null for anything unparseable.
@@ -52,7 +29,40 @@ export function parseSheetDate(input: string | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-// The start of the bucket a date belongs to, at the given granularity.
+// A value counts as numeric if it parses to a finite number.
+function isNumeric(v: string): boolean {
+  if (v.trim() === '') return false
+  return Number.isFinite(Number(v))
+}
+
+// Classify every non-date column by sampling its values:
+// all-numeric → metric (plottable), otherwise → event (day classifier).
+export function classifyColumns(
+  records: Record<string, string>[],
+  dateColumn: string,
+): ColumnInfo[] {
+  if (records.length === 0) return []
+  const keys = Object.keys(records[0]).filter((k) => k !== dateColumn && k !== '')
+  const sample = records.slice(0, 60)
+
+  return keys.map((key) => {
+    let seenValue = false
+    let allNumeric = true
+    for (const rec of sample) {
+      const v = rec[key]
+      if (v == null || v.trim() === '') continue
+      seenValue = true
+      if (!isNumeric(v)) {
+        allNumeric = false
+        break
+      }
+    }
+    return { key, kind: seenValue && allNumeric ? 'metric' : 'event' }
+  })
+}
+
+// ---- bucketing & labels ----
+
 function bucketStart(d: Date, g: Granularity): Date {
   if (g === 'monthly') return new Date(d.getFullYear(), d.getMonth(), 1)
   if (g === 'weekly') {
@@ -69,81 +79,82 @@ const fullDay = new Intl.DateTimeFormat(undefined, {
   month: 'short',
   year: 'numeric',
 })
-const fullMonth = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' })
 
 function axisLabel(d: Date, g: Granularity): string {
   return g === 'monthly' ? monthYear.format(d) : dayMonth.format(d)
 }
 
 function tooltipLabel(d: Date, g: Granularity): string {
-  if (g === 'monthly') return fullMonth.format(d)
+  if (g === 'monthly') return monthYear.format(d)
   if (g === 'weekly') return `Week of ${fullDay.format(d)}`
   return fullDay.format(d)
 }
 
-export interface Point {
-  t: number // bucket-start epoch ms (for sorting / x)
-  label: string // short axis label
-  full: string // full tooltip label
-  value: number
+// ---- indexed multi-series aggregation ----
+
+export interface SeriesSpec {
+  id: string // `${sheet}::${column}`
+  sheet: string
+  column: string
+  label: string // human label, e.g. "Brasov · temp_mean"
 }
 
-function round(v: number, decimals: number): number {
-  const f = 10 ** decimals
-  return Math.round(v * f) / f
+// A row of the merged chart dataset: bucket time + one % value per series id.
+export interface ChartRow {
+  t: number
+  label: string
+  full: string
+  [seriesId: string]: number | string
 }
 
-// Roll rows up to the chosen granularity for one metric.
-export function aggregate(rows: DataRow[], metric: Metric, g: Granularity): Point[] {
+// Average a single column into buckets. Returns sorted [t, {value, date}].
+function bucketAverages(
+  rows: DataRow[],
+  column: string,
+  g: Granularity,
+): { t: number; value: number; date: Date }[] {
   const buckets = new Map<number, { sum: number; count: number; date: Date }>()
-
   for (const row of rows) {
-    const raw = row.values[metric.key]
-    if (raw == null || Number.isNaN(raw)) continue
-    const v = metric.transform ? metric.transform(raw) : raw
-
+    const v = row.values[column]
+    if (v == null || Number.isNaN(v)) continue
     const start = bucketStart(row.date, g)
     const key = start.getTime()
-    const bucket = buckets.get(key)
-    if (bucket) {
-      bucket.sum += v
-      bucket.count += 1
+    const b = buckets.get(key)
+    if (b) {
+      b.sum += v
+      b.count += 1
     } else {
       buckets.set(key, { sum: v, count: 1, date: start })
     }
   }
-
   return [...buckets.entries()]
-    .map(([t, b]) => ({
-      t,
-      label: axisLabel(b.date, g),
-      full: tooltipLabel(b.date, g),
-      value: round(metric.agg === 'sum' ? b.sum : b.sum / b.count, metric.decimals),
-    }))
+    .map(([t, b]) => ({ t, value: b.sum / b.count, date: b.date }))
     .sort((a, b) => a.t - b.t)
 }
 
-export interface SeriesStats {
-  min: number
-  max: number
-  avg: number
-  latest: number
-}
+// Build the merged dataset: every series indexed to % change from its first
+// bucket, aligned on a shared time axis so they overlay on one % scale.
+export function aggregateIndexed(
+  inputs: { spec: SeriesSpec; rows: DataRow[] }[],
+  g: Granularity,
+): ChartRow[] {
+  const merged = new Map<number, ChartRow>()
 
-export function computeStats(points: Point[], decimals: number): SeriesStats | null {
-  if (points.length === 0) return null
-  let min = Infinity
-  let max = -Infinity
-  let sum = 0
-  for (const p of points) {
-    if (p.value < min) min = p.value
-    if (p.value > max) max = p.value
-    sum += p.value
+  for (const { spec, rows } of inputs) {
+    const points = bucketAverages(rows, spec.column, g)
+    if (points.length === 0) continue
+    const base = points[0].value
+
+    for (const p of points) {
+      const pct = base !== 0 ? (p.value / base - 1) * 100 : p.value - base
+      let chartRow = merged.get(p.t)
+      if (!chartRow) {
+        chartRow = { t: p.t, label: axisLabel(p.date, g), full: tooltipLabel(p.date, g) }
+        merged.set(p.t, chartRow)
+      }
+      chartRow[spec.id] = Math.round(pct * 10) / 10
+    }
   }
-  return {
-    min: round(min, decimals),
-    max: round(max, decimals),
-    avg: round(sum / points.length, decimals),
-    latest: points[points.length - 1].value,
-  }
+
+  return [...merged.values()].sort((a, b) => a.t - b.t)
 }
