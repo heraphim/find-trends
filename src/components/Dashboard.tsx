@@ -1,24 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchSheetData } from '../lib/sheet'
-import {
-  aggregateMerged,
-  type Granularity,
-  type SeriesSpec,
-} from '../lib/data'
+import { aggregateMerged, type ChartRow, type Granularity, type SeriesSpec } from '../lib/data'
 import { metricMeta } from '../lib/metricMeta'
-import {
-  buildModel,
-  categoriesForCity,
-  discoverTabNames,
-  parseTabName,
-  type WorkbookModel,
-} from '../lib/workbook'
-import { seriesLabel } from '../lib/labels'
+import { buildModel, discoverTabNames, parseTabName, type WorkbookModel } from '../lib/workbook'
+import { capitalize, prettyCategory, seriesLabel } from '../lib/labels'
 import { DEFAULT_SERIES_COLORS } from '../lib/chartColors'
 import { lastNDays, today, type DateRange } from '../lib/dateRange'
 import { fetchDayAttributes, type DayAttributes } from '../lib/dayFilters'
-import { TabBar } from './TabBar'
-import { Sidebar, type SheetState } from './Sidebar'
+import { CityControls } from './CityControls'
+import { Sidebar, type SheetState, type SidebarCategory } from './Sidebar'
 import { DayFilters } from './DayFilters'
 import { GranularityToggle } from './GranularityToggle'
 import { DateRangePicker } from './DateRangePicker'
@@ -29,24 +19,33 @@ type Discovery =
   | { status: 'error'; message: string }
   | { status: 'ready'; model: WorkbookModel }
 
-function selKey(sheet: string, column: string): string {
-  return `${sheet}::${column}`
+interface ChartGroup {
+  key: string
+  title: string | null
+  series: SeriesSpec[]
+  data: ChartRow[]
 }
 
 export function Dashboard() {
   const [discovery, setDiscovery] = useState<Discovery>({ status: 'loading' })
-  const [activeCity, setActiveCity] = useState('')
+  const [includedCities, setIncludedCities] = useState<Set<string>>(new Set())
+  const [overlap, setOverlap] = useState(true)
   const [granularity, setGranularity] = useState<Granularity>('daily')
   const [range, setRange] = useState<DateRange>(() => lastNDays(30))
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  // City-category selections keyed by `${category}::${column}`; globals by `${sheet}::${column}`.
+  const [citySelections, setCitySelections] = useState<Set<string>>(
+    () => new Set(['weather::sunshine_percentage', 'weather::nice_day_score']),
+  )
+  const [globalSelections, setGlobalSelections] = useState<Set<string>>(new Set())
   const [colorById, setColorById] = useState<Record<string, string>>({})
   const [sheetStates, setSheetStates] = useState<Record<string, SheetState>>({})
   const [dayAttributes, setDayAttributes] = useState<DayAttributes | null>(null)
   const [filterState, setFilterState] = useState<Record<string, Set<string>>>({})
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const inFlight = useRef<Set<string>>(new Set())
-  const didAutoSelect = useRef(false)
+  const didAutoExpand = useRef(false)
 
   // Lazily fetch a sheet's data once.
   const loadSheet = useCallback((sheet: string) => {
@@ -71,7 +70,7 @@ export function Dashboard() {
       .finally(() => inFlight.current.delete(sheet))
   }, [])
 
-  // Discover tabs on mount.
+  // Discover the workbook on mount.
   useEffect(() => {
     let cancelled = false
     discoverTabNames()
@@ -79,7 +78,7 @@ export function Dashboard() {
         if (cancelled) return
         const model = buildModel(names)
         setDiscovery({ status: 'ready', model })
-        setActiveCity(model.cities[0] ?? '')
+        setIncludedCities(new Set(model.cities.slice(0, 1)))
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -102,20 +101,16 @@ export function Dashboard() {
       .then((attrs) => {
         if (cancelled) return
         setDayAttributes(attrs)
-        // Default: every value in every dimension is checked (all days included).
         const init: Record<string, Set<string>> = {}
         for (const d of attrs.dimensions) init[d.column] = new Set(d.values)
         setFilterState(init)
       })
-      .catch(() => {
-        /* filters are optional — ignore load failure */
-      })
+      .catch(() => {})
     return () => {
       cancelled = true
     }
   }, [discovery])
 
-  // Date bounds for the range selector (from the days sheet, or a fallback).
   const bounds = useMemo(() => {
     if (dayAttributes && dayAttributes.byDate.size > 0) {
       let min = Infinity
@@ -138,13 +133,12 @@ export function Dashboard() {
     })
   }, [])
 
-  // Set of date-epochs that pass all active day filters (null = no filtering).
   const allowedDates = useMemo(() => {
     if (!dayAttributes) return null
     const anyUnchecked = dayAttributes.dimensions.some(
       (d) => (filterState[d.column]?.size ?? d.values.length) < d.values.length,
     )
-    if (!anyUnchecked) return null // all checked → include every day
+    if (!anyUnchecked) return null
     const allowed = new Set<number>()
     for (const [epoch, attrs] of dayAttributes.byDate) {
       let pass = true
@@ -161,12 +155,17 @@ export function Dashboard() {
     return allowed
   }, [dayAttributes, filterState])
 
-  const categories = useMemo(() => {
-    if (discovery.status !== 'ready' || !activeCity) return []
-    return categoriesForCity(discovery.model, activeCity)
-  }, [discovery, activeCity])
+  // Distinct city-category names (e.g. ['weather']) and the set of valid sheets.
+  const cityCatNames = useMemo(() => {
+    const names: string[] = []
+    if (discovery.status === 'ready') {
+      for (const tabs of discovery.model.byCity.values()) {
+        for (const t of tabs) if (!names.includes(t.category)) names.push(t.category)
+      }
+    }
+    return names
+  }, [discovery])
 
-  // All valid sheet names (used to validate tab-switch remapping).
   const allSheetNames = useMemo(() => {
     const s = new Set<string>()
     if (discovery.status === 'ready') {
@@ -176,146 +175,121 @@ export function Dashboard() {
     return s
   }, [discovery])
 
-  // Switch city: remap city-specific selections to the new city's equivalent
-  // sheet (e.g. Brasov rain → Sibiu rain); global selections stay put.
-  const changeCity = useCallback(
-    (newCity: string) => {
-      if (newCity === activeCity) return
-      const remapKey = (key: string): string | null => {
-        const [sheet, col] = key.split('::')
-        const tab = parseTabName(sheet)
-        if (tab.city && tab.city === activeCity) {
-          const target = `${newCity}-${tab.category}`
-          return allSheetNames.has(target) ? `${target}::${col}` : null
-        }
-        return key
+  // Load every included city's category sheets (for columns + data).
+  useEffect(() => {
+    for (const city of includedCities) {
+      for (const cat of cityCatNames) {
+        const sheet = `${city}-${cat}`
+        if (allSheetNames.has(sheet)) loadSheet(sheet)
       }
-      setSelected((prev) => {
-        const next = new Set<string>()
-        for (const k of prev) {
-          const nk = remapKey(k)
-          if (nk) next.add(nk)
+    }
+  }, [includedCities, cityCatNames, allSheetNames, loadSheet])
+
+  // Load global sheets referenced by a selection.
+  useEffect(() => {
+    for (const key of globalSelections) loadSheet(key.split('::')[0])
+  }, [globalSelections, loadSheet])
+
+  // Auto-expand the first city category once.
+  useEffect(() => {
+    if (didAutoExpand.current || cityCatNames.length === 0) return
+    setExpanded((prev) => (prev.size ? prev : new Set([cityCatNames[0]])))
+    didAutoExpand.current = true
+  }, [cityCatNames])
+
+  // Categories for the sidebar: city categories (union across included cities) + globals.
+  const categories = useMemo<SidebarCategory[]>(() => {
+    if (discovery.status !== 'ready') return []
+    const out: SidebarCategory[] = []
+
+    for (const cat of cityCatNames) {
+      const sheets = [...includedCities]
+        .map((city) => `${city}-${cat}`)
+        .filter((s) => allSheetNames.has(s))
+      const states = sheets.map((s) => sheetStates[s])
+      const anyReady = states.some((st) => st?.status === 'ready')
+      // Union of columns (first-seen order), across ready included sheets.
+      const seen = new Map<string, 'metric' | 'event'>()
+      for (const s of sheets) {
+        const st = sheetStates[s]
+        if (st?.status === 'ready') {
+          for (const c of st.data.columns) if (!seen.has(c.key)) seen.set(c.key, c.kind)
         }
-        return next
+      }
+      out.push({
+        key: cat,
+        title: prettyCategory(cat),
+        isGlobal: false,
+        status: anyReady ? 'ready' : 'loading',
+        metrics: [...seen].filter(([, k]) => k === 'metric').map(([c]) => c),
+        events: [...seen].filter(([, k]) => k === 'event').map(([c]) => c),
       })
-      setColorById((prev) => {
-        const next: Record<string, string> = {}
-        for (const [k, c] of Object.entries(prev)) {
-          const nk = remapKey(k)
-          if (nk) next[nk] = c
-        }
-        return next
+    }
+
+    for (const t of discovery.model.global) {
+      const st = sheetStates[t.sheet]
+      out.push({
+        key: t.sheet,
+        title: prettyCategory(t.category),
+        isGlobal: true,
+        status:
+          st?.status === 'ready' ? 'ready' : st?.status === 'error' ? 'error' : 'loading',
+        message: st?.status === 'error' ? st.message : undefined,
+        metrics:
+          st?.status === 'ready' ? st.data.columns.filter((c) => c.kind === 'metric').map((c) => c.key) : [],
+        events:
+          st?.status === 'ready' ? st.data.columns.filter((c) => c.kind === 'event').map((c) => c.key) : [],
       })
-      setActiveCity(newCity)
-    },
-    [activeCity, allSheetNames],
+    }
+    return out
+  }, [discovery, cityCatNames, includedCities, allSheetNames, sheetStates])
+
+  const isColSelected = useCallback(
+    (cat: SidebarCategory, col: string) =>
+      cat.isGlobal
+        ? globalSelections.has(`${cat.key}::${col}`)
+        : citySelections.has(`${cat.key}::${col}`),
+    [globalSelections, citySelections],
   )
 
-  // Keep a distinct default color for every selected series; drop colors for
-  // deselected ones.
-  useEffect(() => {
-    setColorById((prev) => {
-      const next: Record<string, string> = {}
-      const used = new Set<string>()
-      for (const id of selected) {
-        if (prev[id]) {
-          next[id] = prev[id]
-          used.add(prev[id])
-        }
-      }
-      for (const id of selected) {
-        if (!next[id]) {
-          const free =
-            DEFAULT_SERIES_COLORS.find((c) => !used.has(c)) ??
-            DEFAULT_SERIES_COLORS[Object.keys(next).length % DEFAULT_SERIES_COLORS.length]
-          next[id] = free
-          used.add(free)
-        }
-      }
-      return next
-    })
-  }, [selected])
-
-  // Prune selections whose column doesn't exist in its (loaded) sheet — e.g.
-  // Sibiu lacks Brasov's derived score columns after a tab switch.
-  useEffect(() => {
-    setSelected((prev) => {
-      let changed = false
-      const next = new Set(prev)
-      for (const key of prev) {
-        const [sheet, col] = key.split('::')
-        const st = sheetStates[sheet]
-        if (
-          st?.status === 'ready' &&
-          !st.data.columns.some((c) => c.kind === 'metric' && c.key === col)
-        ) {
-          next.delete(key)
-          changed = true
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [sheetStates])
-
-  // When the active city changes, auto-open + load its first (weather) category.
-  useEffect(() => {
-    if (categories.length === 0) return
-    const first = categories[0].sheet
-    setExpanded((prev) => (prev.has(first) ? prev : new Set(prev).add(first)))
-    loadSheet(first)
-  }, [categories, loadSheet])
-
-  // Once the first sheet is ready, auto-select a starter metric so the chart
-  // isn't empty on first load.
-  useEffect(() => {
-    if (didAutoSelect.current || categories.length === 0) return
-    const first = categories[0].sheet
-    const state = sheetStates[first]
-    if (state?.status !== 'ready') return
-    const metricKeys = new Set(
-      state.data.columns.filter((c) => c.kind === 'metric').map((c) => c.key),
-    )
-    let starters = ['sunshine_percentage', 'nice_day_score'].filter((k) => metricKeys.has(k))
-    if (starters.length === 0) {
-      const firstMetric = state.data.columns.find((c) => c.kind === 'metric')
-      if (firstMetric) starters = [firstMetric.key]
-    }
-    if (starters.length) {
-      setSelected(new Set(starters.map((k) => selKey(first, k))))
-    }
-    didAutoSelect.current = true
-  }, [categories, sheetStates])
-
-  // Make sure every selected series' sheet is loaded.
-  useEffect(() => {
-    for (const key of selected) {
-      const sheet = key.split('::')[0]
-      const st = sheetStates[sheet]
-      if (!st || st.status === 'idle') loadSheet(sheet)
-    }
-  }, [selected, sheetStates, loadSheet])
-
-  const toggleExpand = useCallback(
-    (sheet: string) => {
-      setExpanded((prev) => {
-        const next = new Set(prev)
-        if (next.has(sheet)) next.delete(sheet)
-        else {
-          next.add(sheet)
-          loadSheet(sheet)
-        }
-        return next
-      })
-    },
-    [loadSheet],
+  const selectedCount = useCallback(
+    (cat: SidebarCategory) => cat.metrics.filter((c) => isColSelected(cat, c)).length,
+    [isColSelected],
   )
 
-  const toggleColumn = useCallback((sheet: string, column: string) => {
-    setSelected((prev) => {
+  const toggleColumn = useCallback((cat: SidebarCategory, col: string) => {
+    const key = `${cat.key}::${col}`
+    const setter = cat.isGlobal ? setGlobalSelections : setCitySelections
+    setter((prev) => {
       const next = new Set(prev)
-      const key = selKey(sheet, column)
       if (next.has(key)) next.delete(key)
       else next.add(key)
+      return next
+    })
+  }, [])
+
+  const toggleExpand = useCallback(
+    (catKey: string) => {
+      setExpanded((prev) => {
+        const next = new Set(prev)
+        if (next.has(catKey)) next.delete(catKey)
+        else {
+          next.add(catKey)
+          if (cityCatNames.includes(catKey)) {
+            for (const city of includedCities) loadSheet(`${city}-${catKey}`)
+          } else loadSheet(catKey)
+        }
+        return next
+      })
+    },
+    [cityCatNames, includedCities, loadSheet],
+  )
+
+  const toggleCity = useCallback((city: string) => {
+    setIncludedCities((prev) => {
+      const next = new Set(prev)
+      if (next.has(city)) next.delete(city)
+      else next.add(city)
       return next
     })
   }, [])
@@ -324,27 +298,41 @@ export function Dashboard() {
     setColorById((prev) => ({ ...prev, [id]: color }))
   }, [])
 
-  const getSheetState = useCallback(
-    (sheet: string): SheetState => sheetStates[sheet] ?? { status: 'idle' },
-    [sheetStates],
-  )
-
-  // Selected series specs (insertion order → stable colors).
+  // Concrete series: city selections × included cities that have the column, then globals.
   const series = useMemo<SeriesSpec[]>(() => {
-    return [...selected].map((key) => {
-      const [sheet, column] = key.split('::')
-      const tab = parseTabName(sheet)
-      return {
+    const out: SeriesSpec[] = []
+    if (discovery.status !== 'ready') return out
+    const cityList = discovery.model.cities.filter((c) => includedCities.has(c))
+
+    for (const sel of citySelections) {
+      const [cat, col] = sel.split('::')
+      for (const city of cityList) {
+        const sheet = `${city}-${cat}`
+        const st = sheetStates[sheet]
+        if (st?.status === 'ready' && st.data.columns.some((c) => c.kind === 'metric' && c.key === col)) {
+          out.push({
+            id: `${sheet}::${col}`,
+            sheet,
+            column: col,
+            label: seriesLabel(city, col),
+            unit: metricMeta(col).unit,
+          })
+        }
+      }
+    }
+    for (const key of globalSelections) {
+      const [sheet, col] = key.split('::')
+      out.push({
         id: key,
         sheet,
-        column,
-        label: seriesLabel(tab.city ?? tab.category, column),
-        unit: metricMeta(column).unit,
-      }
-    })
-  }, [selected])
+        column: col,
+        label: seriesLabel(parseTabName(sheet).category, col),
+        unit: metricMeta(col).unit,
+      })
+    }
+    return out
+  }, [discovery, includedCities, citySelections, globalSelections, sheetStates])
 
-  // Resolve each series' color (override or its distinct default by position).
   const resolvedColors = useMemo(() => {
     const map: Record<string, string> = {}
     series.forEach((s, i) => {
@@ -353,23 +341,66 @@ export function Dashboard() {
     return map
   }, [series, colorById])
 
-  const chartData = useMemo(() => {
-    const inputs = series.flatMap((spec) => {
-      const st = sheetStates[spec.sheet]
-      if (st?.status !== 'ready') return []
-      const rows = st.data.rows.filter(
-        (r) =>
-          r.date >= range.start &&
-          r.date <= range.end &&
-          (!allowedDates || allowedDates.has(r.date.getTime())),
-      )
-      return [{ spec, rows, meta: metricMeta(spec.column) }]
-    })
-    return aggregateMerged(inputs, granularity)
-  }, [series, sheetStates, granularity, range, allowedDates])
+  // Remove a series: drop its underlying selection.
+  const removeSeries = useCallback((s: SeriesSpec) => {
+    const tab = parseTabName(s.sheet)
+    if (tab.city) {
+      setCitySelections((prev) => {
+        const next = new Set(prev)
+        next.delete(`${tab.category}::${s.column}`)
+        return next
+      })
+    } else {
+      setGlobalSelections((prev) => {
+        const next = new Set(prev)
+        next.delete(s.id)
+        return next
+      })
+    }
+  }, [])
+
+  // Aggregate a set of series into one chart dataset (range + day filters applied).
+  const buildData = useCallback(
+    (specs: SeriesSpec[]): ChartRow[] => {
+      const inputs = specs.flatMap((spec) => {
+        const st = sheetStates[spec.sheet]
+        if (st?.status !== 'ready') return []
+        const rows = st.data.rows.filter(
+          (r) =>
+            r.date >= range.start &&
+            r.date <= range.end &&
+            (!allowedDates || allowedDates.has(r.date.getTime())),
+        )
+        return [{ spec, rows, meta: metricMeta(spec.column) }]
+      })
+      return aggregateMerged(inputs, granularity)
+    },
+    [sheetStates, range, allowedDates, granularity],
+  )
+
+  const chartGroups = useMemo<ChartGroup[]>(() => {
+    if (series.length === 0) return []
+    if (overlap) return [{ key: 'all', title: null, series, data: buildData(series) }]
+
+    const groups: ChartGroup[] = []
+    if (discovery.status === 'ready') {
+      for (const city of discovery.model.cities) {
+        if (!includedCities.has(city)) continue
+        const citySeries = series.filter((s) => parseTabName(s.sheet).city === city)
+        if (citySeries.length) {
+          groups.push({ key: city, title: capitalize(city), series: citySeries, data: buildData(citySeries) })
+        }
+      }
+    }
+    const globalSeries = series.filter((s) => parseTabName(s.sheet).city === null)
+    if (globalSeries.length) {
+      groups.push({ key: '__global__', title: 'Markets', series: globalSeries, data: buildData(globalSeries) })
+    }
+    return groups
+  }, [series, overlap, buildData, discovery, includedCities])
 
   if (discovery.status === 'loading') {
-    return <div className="py-20 text-center text-slate-400">Discovering tabs…</div>
+    return <div className="py-20 text-center text-slate-400">Loading workbook…</div>
   }
   if (discovery.status === 'error') {
     return (
@@ -379,9 +410,29 @@ export function Dashboard() {
     )
   }
 
+  const hasData = chartGroups.some((g) => g.data.length > 0)
+
   return (
     <div className="flex flex-col gap-4">
-      <TabBar cities={discovery.model.cities} active={activeCity} onChange={changeCity} />
+      {/* City include-checkboxes + overlap, and a mobile sidebar toggle */}
+      <div className="flex items-stretch gap-3">
+        <div className="min-w-0 flex-1">
+          <CityControls
+            cities={discovery.model.cities}
+            included={includedCities}
+            overlap={overlap}
+            onToggleCity={toggleCity}
+            onToggleOverlap={() => setOverlap((o) => !o)}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setSidebarOpen((o) => !o)}
+          className="shrink-0 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 md:hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+        >
+          {sidebarOpen ? 'Close' : 'Metrics'}
+        </button>
+      </div>
 
       <div className="flex flex-col gap-6 md:flex-row">
         {/* Chart area */}
@@ -389,9 +440,7 @@ export function Dashboard() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">Trends</h2>
-              <p className="text-xs text-slate-400">
-                Actual values over the selected range.
-              </p>
+              <p className="text-xs text-slate-400">Actual values over the selected range.</p>
             </div>
             <GranularityToggle value={granularity} onChange={setGranularity} />
           </div>
@@ -417,7 +466,7 @@ export function Dashboard() {
                   {s.label}
                   <button
                     type="button"
-                    onClick={() => toggleColumn(s.sheet, s.column)}
+                    onClick={() => removeSeries(s)}
                     title="Remove"
                     className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-100"
                   >
@@ -430,19 +479,35 @@ export function Dashboard() {
 
           {series.length === 0 ? (
             <div className="flex h-72 items-center justify-center rounded-xl border border-dashed border-slate-300 px-6 text-center text-sm text-slate-400 dark:border-slate-700">
-              Pick metrics from the categories on the right to plot them.
+              Pick metrics from the categories to plot them.
             </div>
-          ) : chartData.length === 0 ? (
+          ) : !hasData ? (
             <div className="flex h-96 items-center justify-center text-sm text-slate-400">
               Loading series…
             </div>
           ) : (
-            <MultiTrendChart data={chartData} series={series} colorById={resolvedColors} />
+            <div className="flex flex-col gap-6">
+              {chartGroups.map((g) => (
+                <div key={g.key}>
+                  {g.title && (
+                    <h3 className="mb-1 text-sm font-medium text-slate-600 dark:text-slate-300">
+                      {g.title}
+                    </h3>
+                  )}
+                  <MultiTrendChart data={g.data} series={g.series} colorById={resolvedColors} />
+                </div>
+              ))}
+            </div>
           )}
         </section>
 
-        {/* Right column: day filters + category sidebar */}
-        <div className="flex w-full shrink-0 flex-col gap-4 md:w-72">
+        {/* Right column: day filters + category sidebar (closable on mobile) */}
+        <div
+          className={
+            (sidebarOpen ? 'flex' : 'hidden') +
+            ' w-full shrink-0 flex-col gap-4 md:flex md:w-72'
+          }
+        >
           {dayAttributes && (
             <DayFilters
               dimensions={dayAttributes.dimensions}
@@ -453,8 +518,8 @@ export function Dashboard() {
           <Sidebar
             categories={categories}
             expanded={expanded}
-            getSheetState={getSheetState}
-            selected={selected}
+            isSelected={isColSelected}
+            selectedCount={selectedCount}
             onToggleExpand={toggleExpand}
             onToggleColumn={toggleColumn}
           />
