@@ -15,7 +15,7 @@ import {
 } from '../lib/workbook'
 import { seriesLabel } from '../lib/labels'
 import { DEFAULT_SERIES_COLORS } from '../lib/chartColors'
-import { lastNDays, type DateRange } from '../lib/dateRange'
+import { lastNDays, today, type DateRange } from '../lib/dateRange'
 import { fetchDayAttributes, type DayAttributes } from '../lib/dayFilters'
 import { TabBar } from './TabBar'
 import { Sidebar, type SheetState } from './Sidebar'
@@ -114,6 +114,20 @@ export function Dashboard() {
       cancelled = true
     }
   }, [discovery])
+
+  // Date bounds for the range selector (from the days sheet, or a fallback).
+  const bounds = useMemo(() => {
+    if (dayAttributes && dayAttributes.byDate.size > 0) {
+      let min = Infinity
+      let max = -Infinity
+      for (const t of dayAttributes.byDate.keys()) {
+        if (t < min) min = t
+        if (t > max) max = t
+      }
+      return { min: new Date(min), max: new Date(max) }
+    }
+    return { min: new Date(2020, 0, 1), max: today() }
+  }, [dayAttributes])
 
   const toggleFilterValue = useCallback((column: string, value: string) => {
     setFilterState((prev) => {
@@ -382,7 +396,7 @@ export function Dashboard() {
             <GranularityToggle value={granularity} onChange={setGranularity} />
           </div>
 
-          <DateRangePicker value={range} onChange={setRange} />
+          <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
 
           {/* Selected chips — color picker + label + remove */}
           {series.length > 0 && (

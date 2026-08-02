@@ -70,6 +70,8 @@ export function MultiTrendChart({ data, series, colorById }: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
   const labelById = new Map(series.map((s) => [s.id, s.label]))
+  // With few points, draw dots so single/sparse days are visible.
+  const showDots = data.length <= 40
 
   return (
     <div className="h-96 w-full">
@@ -111,7 +113,7 @@ export function MultiTrendChart({ data, series, colorById }: Props) {
               name={s.id}
               stroke={colorById[s.id] ?? colors.categorical[0]}
               strokeWidth={2}
-              dot={false}
+              dot={showDots ? { r: 2.5, strokeWidth: 0 } : false}
               activeDot={{ r: 4, strokeWidth: 0 }}
               isAnimationActive={false}
               connectNulls
