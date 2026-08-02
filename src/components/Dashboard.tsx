@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchSheetData } from '../lib/sheet'
 import {
-  aggregateIndexed,
+  buildGroupCharts,
   type Granularity,
   type SeriesSpec,
 } from '../lib/data'
+import { metricMeta } from '../lib/metricMeta'
 import {
   buildModel,
   categoriesForCity,
@@ -164,16 +165,14 @@ export function Dashboard() {
     })
   }, [selected])
 
-  const chartData = useMemo(() => {
+  const groupCharts = useMemo(() => {
     const inputs = series.flatMap((spec) => {
       const st = sheetStates[spec.sheet]
       if (st?.status !== 'ready') return []
-      const rows = st.data.rows.filter(
-        (r) => r.date >= range.start && r.date <= range.end,
-      )
-      return [{ spec, rows }]
+      const rows = st.data.rows.filter((r) => r.date >= range.start && r.date <= range.end)
+      return [{ spec, rows, meta: metricMeta(spec.column) }]
     })
-    return aggregateIndexed(inputs, granularity)
+    return buildGroupCharts(inputs, granularity)
   }, [series, sheetStates, granularity, range])
 
   if (discovery.status === 'loading') {
@@ -196,9 +195,9 @@ export function Dashboard() {
         <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">Indexed trends</h2>
+              <h2 className="text-lg font-semibold">Trends</h2>
               <p className="text-xs text-slate-400">
-                Each series indexed to % change from the start of the range.
+                Actual values over the selected range, grouped by unit.
               </p>
             </div>
             <GranularityToggle value={granularity} onChange={setGranularity} />
@@ -227,15 +226,24 @@ export function Dashboard() {
           )}
 
           {series.length === 0 ? (
-            <div className="flex h-96 items-center justify-center rounded-xl border border-dashed border-slate-300 px-6 text-center text-sm text-slate-400 dark:border-slate-700">
-              Pick metrics from the categories on the right to plot them (indexed to % change).
+            <div className="flex h-72 items-center justify-center rounded-xl border border-dashed border-slate-300 px-6 text-center text-sm text-slate-400 dark:border-slate-700">
+              Pick metrics from the categories on the right to plot them.
             </div>
-          ) : chartData.length === 0 ? (
-            <div className="flex h-96 items-center justify-center text-sm text-slate-400">
+          ) : groupCharts.length === 0 ? (
+            <div className="flex h-72 items-center justify-center text-sm text-slate-400">
               Loading series…
             </div>
           ) : (
-            <MultiTrendChart data={chartData} series={series} />
+            <div className="flex flex-col gap-6">
+              {groupCharts.map((gc) => (
+                <div key={gc.key}>
+                  <h3 className="mb-1 text-sm font-medium text-slate-600 dark:text-slate-300">
+                    {gc.title}
+                  </h3>
+                  <MultiTrendChart data={gc.data} series={gc.series} unit={gc.unit} />
+                </div>
+              ))}
+            </div>
           )}
         </section>
 

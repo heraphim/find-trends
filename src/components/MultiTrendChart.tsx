@@ -15,6 +15,7 @@ import type { ChartRow, SeriesSpec } from '../lib/data'
 interface Props {
   data: ChartRow[]
   series: SeriesSpec[]
+  unit: string
 }
 
 interface TooltipInjectedProps {
@@ -22,8 +23,10 @@ interface TooltipInjectedProps {
   payload?: Array<{ dataKey: string; value: number; color: string }>
 }
 
-function fmtPct(v: number): string {
-  return `${v > 0 ? '+' : ''}${v.toFixed(1)}%`
+function fmtValue(v: number, unit: string): string {
+  const n = v.toLocaleString(undefined, { maximumFractionDigits: 2 })
+  if (!unit || unit === 'price') return n
+  return `${n} ${unit}`
 }
 
 function ChartTooltip({
@@ -31,9 +34,11 @@ function ChartTooltip({
   payload,
   series,
   colors,
+  unit,
 }: TooltipInjectedProps & {
   series: SeriesSpec[]
   colors: ReturnType<typeof chartColors>
+  unit: string
 }) {
   if (!active || !payload?.length) return null
   const full = (payload[0] as unknown as { payload: ChartRow }).payload.full
@@ -52,7 +57,7 @@ function ChartTooltip({
               style={{ background: p.color }}
             />
             <span style={{ color: colors.inkMuted }}>{labelById.get(p.dataKey) ?? p.dataKey}</span>
-            <span className="ml-auto font-semibold tabular-nums">{fmtPct(p.value)}</span>
+            <span className="ml-auto font-semibold tabular-nums">{fmtValue(p.value, unit)}</span>
           </div>
         ))}
       </div>
@@ -60,13 +65,13 @@ function ChartTooltip({
   )
 }
 
-export function MultiTrendChart({ data, series }: Props) {
+export function MultiTrendChart({ data, series, unit }: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
   const labelById = new Map(series.map((s) => [s.id, s.label]))
 
   return (
-    <div className="h-96 w-full">
+    <div className="h-72 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
           <CartesianGrid stroke={colors.grid} vertical={false} />
@@ -84,11 +89,11 @@ export function MultiTrendChart({ data, series }: Props) {
             width={56}
             axisLine={false}
             tickLine={false}
-            tickFormatter={(v: number) => `${v > 0 ? '+' : ''}${v}%`}
+            tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 })}
           />
           <Tooltip
             cursor={{ stroke: colors.axis, strokeDasharray: '3 3' }}
-            content={<ChartTooltip series={series} colors={colors} />}
+            content={<ChartTooltip series={series} colors={colors} unit={unit} />}
           />
           <Legend
             formatter={(value: string) => (

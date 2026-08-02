@@ -132,6 +132,97 @@ function bucketAverages(
     .sort((a, b) => a.t - b.t)
 }
 
+function round(v: number, decimals: number): number {
+  const f = 10 ** decimals
+  return Math.round(v * f) / f
+}
+
+// Aggregate a column into buckets with the given roll-up (avg or sum) and an
+// optional per-row transform (e.g. seconds → hours).
+function bucketAggregate(
+  rows: DataRow[],
+  column: string,
+  g: Granularity,
+  agg: 'avg' | 'sum',
+  transform?: (v: number) => number,
+): { t: number; value: number; date: Date }[] {
+  const buckets = new Map<number, { sum: number; count: number; date: Date }>()
+  for (const row of rows) {
+    let v = row.values[column]
+    if (v == null || Number.isNaN(v)) continue
+    if (transform) v = transform(v)
+    const start = bucketStart(row.date, g)
+    const key = start.getTime()
+    const b = buckets.get(key)
+    if (b) {
+      b.sum += v
+      b.count += 1
+    } else {
+      buckets.set(key, { sum: v, count: 1, date: start })
+    }
+  }
+  return [...buckets.entries()]
+    .map(([t, b]) => ({ t, value: agg === 'sum' ? b.sum : b.sum / b.count, date: b.date }))
+    .sort((a, b) => a.t - b.t)
+}
+
+export interface GroupChart {
+  key: string // group id
+  title: string
+  unit: string
+  series: SeriesSpec[]
+  data: ChartRow[]
+}
+
+// Group selected series by unit/instrument into separate charts, each showing
+// ACTUAL values (not indexed). Series sharing a group overlay on one axis.
+export function buildGroupCharts(
+  inputs: { spec: SeriesSpec; rows: DataRow[]; meta: ChartMeta }[],
+  g: Granularity,
+): GroupChart[] {
+  const groups = new Map<
+    string,
+    { title: string; unit: string; series: SeriesSpec[]; merged: Map<number, ChartRow>; order: number }
+  >()
+  let order = 0
+
+  for (const { spec, rows, meta } of inputs) {
+    let grp = groups.get(meta.group)
+    if (!grp) {
+      grp = { title: meta.groupTitle, unit: meta.unit, series: [], merged: new Map(), order: order++ }
+      groups.set(meta.group, grp)
+    }
+    grp.series.push(spec)
+    for (const p of bucketAggregate(rows, spec.column, g, meta.agg, meta.transform)) {
+      let chartRow = grp.merged.get(p.t)
+      if (!chartRow) {
+        chartRow = { t: p.t, label: axisLabel(p.date, g), full: tooltipLabel(p.date, g) }
+        grp.merged.set(p.t, chartRow)
+      }
+      chartRow[spec.id] = round(p.value, 2)
+    }
+  }
+
+  return [...groups.entries()]
+    .sort((a, b) => a[1].order - b[1].order)
+    .map(([key, grp]) => ({
+      key,
+      title: grp.title,
+      unit: grp.unit,
+      series: grp.series,
+      data: [...grp.merged.values()].sort((a, b) => a.t - b.t),
+    }))
+}
+
+// Minimal shape buildGroupCharts needs from metricMeta (avoids a lib cycle).
+export interface ChartMeta {
+  unit: string
+  group: string
+  groupTitle: string
+  agg: 'avg' | 'sum'
+  transform?: (v: number) => number
+}
+
 // Build the merged dataset: every series indexed to % change from its first
 // bucket, aligned on a shared time axis so they overlay on one % scale.
 export function aggregateIndexed(
