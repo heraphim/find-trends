@@ -45,16 +45,23 @@ export interface WorkbookModel {
   cities: string[] // ordered top-level tabs
   byCity: Map<string, ParsedTab[]> // city → its own categories
   global: ParsedTab[] // categories shown on every tab
+  daysSheet: string | null // the per-day reference/filter sheet, if present
 }
 
 export function buildModel(names: string[]): WorkbookModel {
   const cities: string[] = []
   const byCity = new Map<string, ParsedTab[]>()
   const global: ParsedTab[] = []
+  let daysSheet: string | null = null
 
   for (const name of names) {
-    // Ignore a standalone date tab if one ever exists.
-    if (name.trim().toLowerCase() === 'date') continue
+    // The "days" (or "date") reference sheet is not a plottable category —
+    // it supplies the per-day filter attributes instead.
+    const low = name.trim().toLowerCase()
+    if (low === 'days' || low === 'date') {
+      if (!daysSheet) daysSheet = name
+      continue
+    }
     const tab = parseTabName(name)
     if (tab.city === null) {
       global.push(tab)
@@ -67,7 +74,7 @@ export function buildModel(names: string[]): WorkbookModel {
     }
   }
 
-  return { cities, byCity, global }
+  return { cities, byCity, global, daysSheet }
 }
 
 // Categories to show for a given city: its own, then the global ones.

@@ -95,7 +95,7 @@ export function Sidebar({
   onToggleColumn,
 }: Props) {
   return (
-    <aside className="w-full shrink-0 md:w-72">
+    <aside className="w-full">
       <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
         Categories
       </h2>

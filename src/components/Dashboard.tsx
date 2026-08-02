@@ -16,8 +16,10 @@ import {
 import { seriesLabel } from '../lib/labels'
 import { DEFAULT_SERIES_COLORS } from '../lib/chartColors'
 import { lastNDays, type DateRange } from '../lib/dateRange'
+import { fetchDayAttributes, type DayAttributes } from '../lib/dayFilters'
 import { TabBar } from './TabBar'
 import { Sidebar, type SheetState } from './Sidebar'
+import { DayFilters } from './DayFilters'
 import { GranularityToggle } from './GranularityToggle'
 import { DateRangePicker } from './DateRangePicker'
 import { MultiTrendChart } from './MultiTrendChart'
@@ -40,6 +42,8 @@ export function Dashboard() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [colorById, setColorById] = useState<Record<string, string>>({})
   const [sheetStates, setSheetStates] = useState<Record<string, SheetState>>({})
+  const [dayAttributes, setDayAttributes] = useState<DayAttributes | null>(null)
+  const [filterState, setFilterState] = useState<Record<string, Set<string>>>({})
 
   const inFlight = useRef<Set<string>>(new Set())
   const didAutoSelect = useRef(false)
@@ -89,6 +93,59 @@ export function Dashboard() {
       cancelled = true
     }
   }, [])
+
+  // Load the per-day filter attributes from the days sheet.
+  useEffect(() => {
+    if (discovery.status !== 'ready' || !discovery.model.daysSheet) return
+    let cancelled = false
+    fetchDayAttributes(discovery.model.daysSheet)
+      .then((attrs) => {
+        if (cancelled) return
+        setDayAttributes(attrs)
+        // Default: every value in every dimension is checked (all days included).
+        const init: Record<string, Set<string>> = {}
+        for (const d of attrs.dimensions) init[d.column] = new Set(d.values)
+        setFilterState(init)
+      })
+      .catch(() => {
+        /* filters are optional — ignore load failure */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [discovery])
+
+  const toggleFilterValue = useCallback((column: string, value: string) => {
+    setFilterState((prev) => {
+      const set = new Set(prev[column] ?? [])
+      if (set.has(value)) set.delete(value)
+      else set.add(value)
+      return { ...prev, [column]: set }
+    })
+  }, [])
+
+  // Set of date-epochs that pass all active day filters (null = no filtering).
+  const allowedDates = useMemo(() => {
+    if (!dayAttributes) return null
+    const anyUnchecked = dayAttributes.dimensions.some(
+      (d) => (filterState[d.column]?.size ?? d.values.length) < d.values.length,
+    )
+    if (!anyUnchecked) return null // all checked → include every day
+    const allowed = new Set<number>()
+    for (const [epoch, attrs] of dayAttributes.byDate) {
+      let pass = true
+      for (const d of dayAttributes.dimensions) {
+        const checked = filterState[d.column]
+        const val = attrs[d.column]
+        if (checked && val !== undefined && !checked.has(val)) {
+          pass = false
+          break
+        }
+      }
+      if (pass) allowed.add(epoch)
+    }
+    return allowed
+  }, [dayAttributes, filterState])
 
   const categories = useMemo(() => {
     if (discovery.status !== 'ready' || !activeCity) return []
@@ -286,11 +343,16 @@ export function Dashboard() {
     const inputs = series.flatMap((spec) => {
       const st = sheetStates[spec.sheet]
       if (st?.status !== 'ready') return []
-      const rows = st.data.rows.filter((r) => r.date >= range.start && r.date <= range.end)
+      const rows = st.data.rows.filter(
+        (r) =>
+          r.date >= range.start &&
+          r.date <= range.end &&
+          (!allowedDates || allowedDates.has(r.date.getTime())),
+      )
       return [{ spec, rows, meta: metricMeta(spec.column) }]
     })
     return aggregateMerged(inputs, granularity)
-  }, [series, sheetStates, granularity, range])
+  }, [series, sheetStates, granularity, range, allowedDates])
 
   if (discovery.status === 'loading') {
     return <div className="py-20 text-center text-slate-400">Discovering tabs…</div>
@@ -365,15 +427,24 @@ export function Dashboard() {
           )}
         </section>
 
-        {/* Sidebar */}
-        <Sidebar
-          categories={categories}
-          expanded={expanded}
-          getSheetState={getSheetState}
-          selected={selected}
-          onToggleExpand={toggleExpand}
-          onToggleColumn={toggleColumn}
-        />
+        {/* Right column: day filters + category sidebar */}
+        <div className="flex w-full shrink-0 flex-col gap-4 md:w-72">
+          {dayAttributes && (
+            <DayFilters
+              dimensions={dayAttributes.dimensions}
+              state={filterState}
+              onToggle={toggleFilterValue}
+            />
+          )}
+          <Sidebar
+            categories={categories}
+            expanded={expanded}
+            getSheetState={getSheetState}
+            selected={selected}
+            onToggleExpand={toggleExpand}
+            onToggleColumn={toggleColumn}
+          />
+        </div>
       </div>
     </div>
   )
