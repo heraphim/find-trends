@@ -15,6 +15,7 @@ import type { ChartRow, SeriesSpec } from '../lib/data'
 interface Props {
   data: ChartRow[]
   series: SeriesSpec[]
+  colorById: Record<string, string>
 }
 
 interface TooltipInjectedProps {
@@ -65,7 +66,7 @@ function ChartTooltip({
   )
 }
 
-export function MultiTrendChart({ data, series }: Props) {
+export function MultiTrendChart({ data, series, colorById }: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
   const labelById = new Map(series.map((s) => [s.id, s.label]))
@@ -102,13 +103,13 @@ export function MultiTrendChart({ data, series }: Props) {
               </span>
             )}
           />
-          {series.map((s, i) => (
+          {series.map((s) => (
             <Line
               key={s.id}
               type="monotone"
               dataKey={s.id}
               name={s.id}
-              stroke={colors.categorical[i % colors.categorical.length]}
+              stroke={colorById[s.id] ?? colors.categorical[0]}
               strokeWidth={2}
               dot={false}
               activeDot={{ r: 4, strokeWidth: 0 }}

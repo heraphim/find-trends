@@ -23,6 +23,10 @@ const CATEGORICAL_DARK = [
   '#e66767',
 ]
 
+// Canonical distinct default colors assigned to series in order (theme-neutral
+// enough to read on both surfaces; users can override per series via the picker).
+export const DEFAULT_SERIES_COLORS = CATEGORICAL_LIGHT
+
 export function chartColors(theme: Theme) {
   const dark = theme === 'dark'
   const categorical = dark ? CATEGORICAL_DARK : CATEGORICAL_LIGHT

@@ -14,6 +14,7 @@ import {
   type WorkbookModel,
 } from '../lib/workbook'
 import { seriesLabel } from '../lib/labels'
+import { DEFAULT_SERIES_COLORS } from '../lib/chartColors'
 import { lastNDays, type DateRange } from '../lib/dateRange'
 import { TabBar } from './TabBar'
 import { Sidebar, type SheetState } from './Sidebar'
@@ -37,6 +38,7 @@ export function Dashboard() {
   const [range, setRange] = useState<DateRange>(() => lastNDays(30))
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [colorById, setColorById] = useState<Record<string, string>>({})
   const [sheetStates, setSheetStates] = useState<Record<string, SheetState>>({})
 
   const inFlight = useRef<Set<string>>(new Set())
@@ -92,6 +94,97 @@ export function Dashboard() {
     if (discovery.status !== 'ready' || !activeCity) return []
     return categoriesForCity(discovery.model, activeCity)
   }, [discovery, activeCity])
+
+  // All valid sheet names (used to validate tab-switch remapping).
+  const allSheetNames = useMemo(() => {
+    const s = new Set<string>()
+    if (discovery.status === 'ready') {
+      for (const tabs of discovery.model.byCity.values()) for (const t of tabs) s.add(t.sheet)
+      for (const t of discovery.model.global) s.add(t.sheet)
+    }
+    return s
+  }, [discovery])
+
+  // Switch city: remap city-specific selections to the new city's equivalent
+  // sheet (e.g. Brasov rain → Sibiu rain); global selections stay put.
+  const changeCity = useCallback(
+    (newCity: string) => {
+      if (newCity === activeCity) return
+      const remapKey = (key: string): string | null => {
+        const [sheet, col] = key.split('::')
+        const tab = parseTabName(sheet)
+        if (tab.city && tab.city === activeCity) {
+          const target = `${newCity}-${tab.category}`
+          return allSheetNames.has(target) ? `${target}::${col}` : null
+        }
+        return key
+      }
+      setSelected((prev) => {
+        const next = new Set<string>()
+        for (const k of prev) {
+          const nk = remapKey(k)
+          if (nk) next.add(nk)
+        }
+        return next
+      })
+      setColorById((prev) => {
+        const next: Record<string, string> = {}
+        for (const [k, c] of Object.entries(prev)) {
+          const nk = remapKey(k)
+          if (nk) next[nk] = c
+        }
+        return next
+      })
+      setActiveCity(newCity)
+    },
+    [activeCity, allSheetNames],
+  )
+
+  // Keep a distinct default color for every selected series; drop colors for
+  // deselected ones.
+  useEffect(() => {
+    setColorById((prev) => {
+      const next: Record<string, string> = {}
+      const used = new Set<string>()
+      for (const id of selected) {
+        if (prev[id]) {
+          next[id] = prev[id]
+          used.add(prev[id])
+        }
+      }
+      for (const id of selected) {
+        if (!next[id]) {
+          const free =
+            DEFAULT_SERIES_COLORS.find((c) => !used.has(c)) ??
+            DEFAULT_SERIES_COLORS[Object.keys(next).length % DEFAULT_SERIES_COLORS.length]
+          next[id] = free
+          used.add(free)
+        }
+      }
+      return next
+    })
+  }, [selected])
+
+  // Prune selections whose column doesn't exist in its (loaded) sheet — e.g.
+  // Sibiu lacks Brasov's derived score columns after a tab switch.
+  useEffect(() => {
+    setSelected((prev) => {
+      let changed = false
+      const next = new Set(prev)
+      for (const key of prev) {
+        const [sheet, col] = key.split('::')
+        const st = sheetStates[sheet]
+        if (
+          st?.status === 'ready' &&
+          !st.data.columns.some((c) => c.kind === 'metric' && c.key === col)
+        ) {
+          next.delete(key)
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [sheetStates])
 
   // When the active city changes, auto-open + load its first (weather) category.
   useEffect(() => {
@@ -156,6 +249,10 @@ export function Dashboard() {
     })
   }, [])
 
+  const setSeriesColor = useCallback((id: string, color: string) => {
+    setColorById((prev) => ({ ...prev, [id]: color }))
+  }, [])
+
   const getSheetState = useCallback(
     (sheet: string): SheetState => sheetStates[sheet] ?? { status: 'idle' },
     [sheetStates],
@@ -175,6 +272,15 @@ export function Dashboard() {
       }
     })
   }, [selected])
+
+  // Resolve each series' color (override or its distinct default by position).
+  const resolvedColors = useMemo(() => {
+    const map: Record<string, string> = {}
+    series.forEach((s, i) => {
+      map[s.id] = colorById[s.id] ?? DEFAULT_SERIES_COLORS[i % DEFAULT_SERIES_COLORS.length]
+    })
+    return map
+  }, [series, colorById])
 
   const chartData = useMemo(() => {
     const inputs = series.flatMap((spec) => {
@@ -199,7 +305,7 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col gap-4">
-      <TabBar cities={discovery.model.cities} active={activeCity} onChange={setActiveCity} />
+      <TabBar cities={discovery.model.cities} active={activeCity} onChange={changeCity} />
 
       <div className="flex flex-col gap-6 md:flex-row">
         {/* Chart area */}
@@ -216,22 +322,32 @@ export function Dashboard() {
 
           <DateRangePicker value={range} onChange={setRange} />
 
-          {/* Selected chips */}
+          {/* Selected chips — color picker + label + remove */}
           {series.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {series.map((s) => (
-                <button
+                <span
                   key={s.id}
-                  type="button"
-                  onClick={() => toggleColumn(s.sheet, s.column)}
-                  className="group inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                  title="Remove"
+                  className="group inline-flex items-center gap-1.5 rounded-full bg-slate-100 py-1 pl-1.5 pr-2 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 >
+                  <input
+                    type="color"
+                    aria-label={`Color for ${s.label}`}
+                    title="Change color"
+                    value={resolvedColors[s.id] ?? '#000000'}
+                    onChange={(e) => setSeriesColor(s.id, e.target.value)}
+                    className="h-4 w-4 shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0 [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0"
+                  />
                   {s.label}
-                  <span className="text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => toggleColumn(s.sheet, s.column)}
+                    title="Remove"
+                    className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-100"
+                  >
                     ✕
-                  </span>
-                </button>
+                  </button>
+                </span>
               ))}
             </div>
           )}
@@ -245,7 +361,7 @@ export function Dashboard() {
               Loading series…
             </div>
           ) : (
-            <MultiTrendChart data={chartData} series={series} />
+            <MultiTrendChart data={chartData} series={series} colorById={resolvedColors} />
           )}
         </section>
 
