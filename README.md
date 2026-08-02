@@ -1,32 +1,49 @@
-# React + TypeScript + Vite
+# find-trends
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A **no-backend** web app that reads data from a public Google Sheet and visualises
+daily / weekly / monthly / yearly trends across cities and markets — with a curated
+feed of world events for the selected period. Everything runs in the browser; it's
+hosted for free on GitHub Pages.
 
-Currently, two official plugins are available:
+**Live:** https://heraphim.github.io/find-trends/
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Features
 
-## React Compiler
+- **Reads a Google Sheet directly** (no backend, no API key) — tabs are discovered at
+  runtime and each becomes a city or a global data category.
+- **Cities as include-checkboxes** with an **overlap** toggle (one shared chart, or one
+  chart per city).
+- **Range** selector (Day / Week / Month / Year / All) + a **Time units** granularity
+  that's constrained to the range.
+- **Actual values** or **% change** (to compare series of very different magnitudes),
+  with **Pearson correlation** shown per chart.
+- **Day filters** (weekend / season / holiday …) that apply before aggregation, plus
+  matching-day counts.
+- **Global events** panel from Wikipedia, scaled to the range and ranked by estimated
+  importance (major / notable / minor). Click a chart point to focus events on that day.
+- Per-series **color pickers**, **dark mode** (default), and all settings **persist**
+  between sessions.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Data
 
-## Expanding the Oxlint configuration
+Powered by a public Google Sheet with tabs for a per-day reference (`days`), city
+weather (`brasov-weather`, `sibiu-weather`), and markets (`commodities`, `euro`).
+Sheet naming drives the UI: `city-category` tabs become city + category; single-word
+tabs are global categories.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Develop
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev      # http://localhost:5173/find-trends/
+npm run build    # tsc + vite build
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Deploy
+
+Pushing to `main` triggers a GitHub Actions workflow that builds the app and publishes
+it to GitHub Pages.
+
+## Tech
+
+Vite · React · TypeScript · Tailwind CSS · Recharts · PapaParse.
