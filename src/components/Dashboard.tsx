@@ -3,6 +3,7 @@ import { fetchSheetData } from '../lib/sheet'
 import {
   aggregateMerged,
   bucketDates,
+  bucketToRange,
   rebaseToPercent,
   seriesCorrelations,
   type ChartRow,
@@ -76,6 +77,8 @@ export function Dashboard() {
     setMapSerde,
   )
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // A clicked chart point focuses the events panel on that bucket's period.
+  const [focusedT, setFocusedT] = useState<number | null>(null)
 
   const inFlight = useRef<Set<string>>(new Set())
   const didAutoExpand = useRef(false)
@@ -474,6 +477,14 @@ export function Dashboard() {
     [withDayCounts, buildData, scaleMode],
   )
 
+  // A change of range/granularity invalidates the clicked bucket.
+  useEffect(() => {
+    setFocusedT(null)
+  }, [granularity, range])
+
+  const focusedRange = focusedT !== null ? bucketToRange(focusedT, granularity) : null
+  const eventsRange = focusedRange ?? range
+
   const chartGroups = useMemo<ChartGroup[]>(() => {
     if (series.length === 0) return []
     if (overlap) return [makeGroup('all', null, series)]
@@ -661,6 +672,7 @@ export function Dashboard() {
                     series={g.series}
                     colorById={resolvedColors}
                     percent={scaleMode === 'percent'}
+                    onPointClick={setFocusedT}
                   />
                   {g.correlations.length > 0 && (
                     <div className="mt-2 flex flex-col gap-0.5 text-xs text-slate-500 dark:text-slate-400">
@@ -709,8 +721,12 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Global events for the selected range (bottom) */}
-      <EventsPanel range={range} />
+      {/* Global events for the selected range, or a clicked point (bottom) */}
+      <EventsPanel
+        range={eventsRange}
+        focused={focusedRange !== null}
+        onClear={() => setFocusedT(null)}
+      />
     </div>
   )
 }

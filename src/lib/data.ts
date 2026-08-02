@@ -1,3 +1,5 @@
+import type { DateRange } from './dateRange'
+
 // One row of source data: a date plus its numeric columns.
 export interface DataRow {
   date: Date
@@ -257,6 +259,20 @@ export function seriesCorrelations(
     }
   }
   return out.sort((x, y) => Math.abs(y.r) - Math.abs(x.r))
+}
+
+// The date range a clicked chart point (bucket) covers, given the granularity.
+// Returns null for 'all' (the single point spans the whole range).
+export function bucketToRange(t: number, g: Granularity): DateRange | null {
+  if (g === 'all') return null
+  const d = new Date(t)
+  const y = d.getFullYear()
+  const m = d.getMonth()
+  const day = d.getDate()
+  if (g === 'year') return { start: new Date(y, 0, 1), end: new Date(y, 11, 31) }
+  if (g === 'month') return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0) }
+  if (g === 'week') return { start: new Date(y, m, day), end: new Date(y, m, day + 6) }
+  return { start: new Date(y, m, day), end: new Date(y, m, day) } // day
 }
 
 // Count how many of the given dates fall into each bucket (same bucketing as

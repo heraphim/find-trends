@@ -17,6 +17,7 @@ interface Props {
   series: SeriesSpec[]
   colorById: Record<string, string>
   percent?: boolean
+  onPointClick?: (bucketT: number) => void
 }
 
 interface TooltipInjectedProps {
@@ -82,7 +83,7 @@ function ChartTooltip({
   )
 }
 
-export function MultiTrendChart({ data, series, colorById, percent }: Props) {
+export function MultiTrendChart({ data, series, colorById, percent, onPointClick }: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
   const labelById = new Map(series.map((s) => [s.id, s.label]))
@@ -90,9 +91,20 @@ export function MultiTrendChart({ data, series, colorById, percent }: Props) {
   const showDots = data.length <= 40
 
   return (
-    <div className="h-96 w-full">
+    <div className={'h-96 w-full' + (onPointClick ? ' cursor-pointer' : '')}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
+        <LineChart
+          data={data}
+          margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
+          onClick={(state: unknown) => {
+            // recharts v3 passes activeIndex (not activePayload); map it to our row.
+            const idx = Number((state as { activeIndex?: number | string })?.activeIndex)
+            if (Number.isInteger(idx) && idx >= 0 && idx < data.length) {
+              const t = data[idx].t
+              if (typeof t === 'number') onPointClick?.(t)
+            }
+          }}
+        >
           <CartesianGrid stroke={colors.grid} vertical={false} />
           <XAxis
             dataKey="label"

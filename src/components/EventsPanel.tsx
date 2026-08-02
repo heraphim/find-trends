@@ -4,6 +4,8 @@ import type { DateRange } from '../lib/dateRange'
 
 interface Props {
   range: DateRange
+  focused?: boolean
+  onClear?: () => void
 }
 
 type State =
@@ -21,7 +23,7 @@ const shortFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'sh
 
 const MAJOR_CAP = 150
 
-export function EventsPanel({ range }: Props) {
+export function EventsPanel({ range, focused, onClear }: Props) {
   const [state, setState] = useState<State>({ status: 'loading' })
 
   useEffect(() => {
@@ -40,12 +42,31 @@ export function EventsPanel({ range }: Props) {
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="text-lg font-semibold">Global events</h2>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
+          Global events
+          {focused && (
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+              selected point
+            </span>
+          )}
+        </h2>
         <span className="text-xs text-slate-400">
           {shortFmt.format(range.start)} – {shortFmt.format(range.end)} · source: Wikipedia
+          {focused && onClear && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="ml-2 rounded border border-slate-300 px-1.5 py-0.5 font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              clear
+            </button>
+          )}
         </span>
       </div>
+      {!focused && (
+        <p className="-mt-2 mb-3 text-xs text-slate-400">Tip: click a point in the chart to see that day/period.</p>
+      )}
 
       {state.status === 'loading' && (
         <div className="py-6 text-center text-sm text-slate-400">Loading events…</div>
