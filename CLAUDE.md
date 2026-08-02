@@ -70,6 +70,9 @@ click a point → focus events), `EventsPanel`, `BuildInfo`, `ThemeToggle`.
 
 - **Sales CSV upload + comparison** (aligned time-series, scatter + r, correlation ranking) — the main goal, blocked on a sample sales file.
 - **Event overlays** on the chart from day-classifier columns (`season`, `nice_day_label`, `weather_code`, etc.).
+
+### TODO — user suggestions, ASK the user for direction before building
+
 - **Day/week benchmarking vs same-weekday averages (sales):** when a single day is selected, show it vs the average of the same weekday (e.g. all Mondays) within that month / year / all-time, as a %; likewise a selected week vs the average week. Sales-oriented (needs the sales upload). *(Discuss scope with user before building.)*
 - **Long-weekend / "bridge" detection:** from RO public holidays (`is_holiday` in `days`), infer likely bridge days — a holiday on Tue → Mon bridge; on Thu → Fri bridge; adjacent-to-weekend holidays. Surface as a filter/marker. *(Discuss.)*
 - **Non-holiday "event days":** curated special days that affect shopping but aren't days off — RO saint/tradition days (Bobotează Jan 6, Sf. Ioan Jan 7, Dragobete Feb 24, Mărțișor Mar 1, Women's Day Mar 8, Sf. Gheorghe Apr 23, Constantin și Elena May 21, Sânziene Jun 24, Sf. Ilie Jul 20, Sf. Maria Aug 15, Sf. Dumitru Oct 26, Sf. Andrei Nov 30) and commercial days (Valentine's, Black Friday, Cyber Monday, Christmas shopping season, Easter shopping, Back to school, Mother's/Father's Day — several are movable). *(Decide data location + how to surface; discuss.)*
