@@ -1,4 +1,5 @@
 import { BuildInfo } from './components/BuildInfo'
+import { Dashboard } from './components/Dashboard'
 import { ThemeToggle } from './components/ThemeToggle'
 
 function App() {
@@ -16,10 +17,7 @@ function App() {
         </header>
 
         <main className="flex-1">
-          {/* Dashboard (charts, CSV upload) goes here next. */}
-          <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-slate-300 text-slate-400 dark:border-slate-700 dark:text-slate-500">
-            Dashboard coming soon.
-          </div>
+          <Dashboard />
         </main>
       </div>
 
