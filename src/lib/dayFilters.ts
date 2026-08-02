@@ -14,6 +14,10 @@ export interface DayAttributes {
 
 const MAX_DISTINCT = 20 // guard against high-cardinality columns
 
+// Day columns that exist but should NOT become filters (e.g. the weekday-name
+// column is redundant with the weekend flag).
+const EXCLUDED_FILTERS = new Set(['is_weekday', 'weekday'])
+
 function isNumeric(v: string): boolean {
   if (v.trim() === '') return false
   return Number.isFinite(Number(v))
@@ -57,6 +61,7 @@ export async function fetchDayAttributes(sheetName: string): Promise<DayAttribut
     }
   }
   const filterCols = keys.filter((k) => {
+    if (EXCLUDED_FILTERS.has(k.toLowerCase())) return false
     const vals = [...distinct[k]]
     return vals.length > 0 && vals.length <= MAX_DISTINCT && vals.some((v) => !isNumeric(v))
   })
