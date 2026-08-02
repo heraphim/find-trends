@@ -22,6 +22,11 @@ export function monthToDate(): DateRange {
   return { start: new Date(t.getFullYear(), t.getMonth(), 1), end: t }
 }
 
+// Rolling window of the last n calendar days, inclusive of today.
+export function lastNDays(n: number): DateRange {
+  return { start: addDays(today(), -(n - 1)), end: today() }
+}
+
 // <input type="date"> uses yyyy-mm-dd in local terms.
 export function toInputValue(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')

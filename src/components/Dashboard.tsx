@@ -14,7 +14,7 @@ import {
   type WorkbookModel,
 } from '../lib/workbook'
 import { seriesLabel } from '../lib/labels'
-import { monthToDate, type DateRange } from '../lib/dateRange'
+import { lastNDays, type DateRange } from '../lib/dateRange'
 import { TabBar } from './TabBar'
 import { Sidebar, type SheetState } from './Sidebar'
 import { GranularityToggle } from './GranularityToggle'
@@ -34,7 +34,7 @@ export function Dashboard() {
   const [discovery, setDiscovery] = useState<Discovery>({ status: 'loading' })
   const [activeCity, setActiveCity] = useState('')
   const [granularity, setGranularity] = useState<Granularity>('daily')
-  const [range, setRange] = useState<DateRange>(() => monthToDate())
+  const [range, setRange] = useState<DateRange>(() => lastNDays(30))
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [sheetStates, setSheetStates] = useState<Record<string, SheetState>>({})
