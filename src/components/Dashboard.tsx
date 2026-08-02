@@ -13,9 +13,11 @@ import {
   type WorkbookModel,
 } from '../lib/workbook'
 import { seriesLabel } from '../lib/labels'
+import { monthToDate, type DateRange } from '../lib/dateRange'
 import { TabBar } from './TabBar'
 import { Sidebar, type SheetState } from './Sidebar'
 import { GranularityToggle } from './GranularityToggle'
+import { DateRangePicker } from './DateRangePicker'
 import { MultiTrendChart } from './MultiTrendChart'
 
 type Discovery =
@@ -30,7 +32,8 @@ function selKey(sheet: string, column: string): string {
 export function Dashboard() {
   const [discovery, setDiscovery] = useState<Discovery>({ status: 'loading' })
   const [activeCity, setActiveCity] = useState('')
-  const [granularity, setGranularity] = useState<Granularity>('monthly')
+  const [granularity, setGranularity] = useState<Granularity>('daily')
+  const [range, setRange] = useState<DateRange>(() => monthToDate())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [sheetStates, setSheetStates] = useState<Record<string, SheetState>>({})
@@ -164,10 +167,14 @@ export function Dashboard() {
   const chartData = useMemo(() => {
     const inputs = series.flatMap((spec) => {
       const st = sheetStates[spec.sheet]
-      return st?.status === 'ready' ? [{ spec, rows: st.data.rows }] : []
+      if (st?.status !== 'ready') return []
+      const rows = st.data.rows.filter(
+        (r) => r.date >= range.start && r.date <= range.end,
+      )
+      return [{ spec, rows }]
     })
     return aggregateIndexed(inputs, granularity)
-  }, [series, sheetStates, granularity])
+  }, [series, sheetStates, granularity, range])
 
   if (discovery.status === 'loading') {
     return <div className="py-20 text-center text-slate-400">Discovering tabs…</div>
@@ -196,6 +203,8 @@ export function Dashboard() {
             </div>
             <GranularityToggle value={granularity} onChange={setGranularity} />
           </div>
+
+          <DateRangePicker value={range} onChange={setRange} />
 
           {/* Selected chips */}
           {series.length > 0 && (
