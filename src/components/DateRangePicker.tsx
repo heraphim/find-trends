@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import {
   fmtDayDash,
   fmtMonthYear,
@@ -14,6 +14,12 @@ import {
   yesterday,
   type DateRange,
 } from '../lib/dateRange'
+import { usePersistedState } from '../hooks/usePersistedState'
+
+const dateSerde = {
+  serialize: (d: Date) => d.toISOString(),
+  deserialize: (s: string) => new Date(s),
+}
 
 export type RangeMode = 'day' | 'week' | 'month' | 'year' | 'all'
 
@@ -37,34 +43,50 @@ const controlClass =
   'rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 [color-scheme:light] dark:[color-scheme:dark]'
 
 export function DateRangePicker({ onChange, bounds, mode, onModeChange }: Props) {
-  const [daySel, setDaySel] = useState<Date>(() => yesterday())
-  const [weekSel, setWeekSel] = useState('recent')
-  const [monthSel, setMonthSel] = useState('recent')
-  const [yearSel, setYearSel] = useState('recent')
+  // Persisted sub-selections; the actual range is derived from them + mode.
+  const [daySel, setDaySel] = usePersistedState<Date>('ft.daySel', () => yesterday(), dateSerde)
+  const [weekSel, setWeekSel] = usePersistedState('ft.weekSel', 'recent')
+  const [monthSel, setMonthSel] = usePersistedState('ft.monthSel', 'recent')
+  const [yearSel, setYearSel] = usePersistedState('ft.yearSel', 'recent')
 
   const weeks = useMemo(() => weekOptions(bounds.min, bounds.max), [bounds])
   const months = useMemo(() => monthOptions(bounds.min, bounds.max), [bounds])
   const years = useMemo(() => yearOptions(bounds.min, bounds.max), [bounds])
 
-  const clamp = (r: DateRange): DateRange => ({
-    start: r.start.getTime() < bounds.min.getTime() ? new Date(bounds.min) : r.start,
-    end: r.end.getTime() > bounds.max.getTime() ? new Date(bounds.max) : r.end,
-  })
-  const apply = (r: DateRange) => onChange(clamp(r))
+  // Compute the range for a mode from the current sub-selections, clamped.
+  const rangeFor = useCallback(
+    (m: RangeMode): DateRange => {
+      let r: DateRange
+      if (m === 'day') r = { start: daySel, end: daySel }
+      else if (m === 'week')
+        r = weekSel === 'recent' ? lastNDays(7) : weekRangeFromMonday(fromInputValue(weekSel)!)
+      else if (m === 'month') {
+        if (monthSel === 'recent') r = lastNDays(30)
+        else {
+          const [y, mo] = monthSel.split('-').map(Number)
+          r = monthRangeOf(y, mo)
+        }
+      } else if (m === 'year')
+        r = yearSel === 'recent' ? lastNDays(365) : yearRangeOf(Number(yearSel))
+      else r = { start: new Date(bounds.min), end: new Date(bounds.max) }
+      return {
+        start: r.start.getTime() < bounds.min.getTime() ? new Date(bounds.min) : r.start,
+        end: r.end.getTime() > bounds.max.getTime() ? new Date(bounds.max) : r.end,
+      }
+    },
+    [daySel, weekSel, monthSel, yearSel, bounds],
+  )
+
+  // Keep the range in sync with mode + selections (also restores it on load).
+  useEffect(() => {
+    onChange(rangeFor(mode))
+  }, [mode, rangeFor, onChange])
 
   const selectMode = (m: RangeMode) => {
     onModeChange(m)
-    if (m === 'day') apply({ start: daySel, end: daySel })
-    else if (m === 'week') {
-      setWeekSel('recent')
-      apply(lastNDays(7))
-    } else if (m === 'month') {
-      setMonthSel('recent')
-      apply(lastNDays(30))
-    } else if (m === 'year') {
-      setYearSel('recent')
-      apply(lastNDays(365))
-    } else apply({ start: new Date(bounds.min), end: new Date(bounds.max) })
+    if (m === 'week') setWeekSel('recent')
+    else if (m === 'month') setMonthSel('recent')
+    else if (m === 'year') setYearSel('recent')
   }
 
   return (
@@ -104,10 +126,7 @@ export function DateRangePicker({ onChange, bounds, mode, onModeChange }: Props)
           min={toInputValue(bounds.min)}
           onChange={(e) => {
             const d = fromInputValue(e.target.value)
-            if (d) {
-              setDaySel(d)
-              apply({ start: d, end: d })
-            }
+            if (d) setDaySel(d)
           }}
         />
       )}
@@ -117,12 +136,7 @@ export function DateRangePicker({ onChange, bounds, mode, onModeChange }: Props)
           aria-label="Week"
           className={controlClass}
           value={weekSel}
-          onChange={(e) => {
-            const k = e.target.value
-            setWeekSel(k)
-            if (k === 'recent') apply(lastNDays(7))
-            else apply(weekRangeFromMonday(fromInputValue(k)!))
-          }}
+          onChange={(e) => setWeekSel(e.target.value)}
         >
           <option value="recent">Last 7 days</option>
           {weeks.map((w) => (
@@ -138,15 +152,7 @@ export function DateRangePicker({ onChange, bounds, mode, onModeChange }: Props)
           aria-label="Month"
           className={controlClass}
           value={monthSel}
-          onChange={(e) => {
-            const k = e.target.value
-            setMonthSel(k)
-            if (k === 'recent') apply(lastNDays(30))
-            else {
-              const [y, mo] = k.split('-').map(Number)
-              apply(monthRangeOf(y, mo))
-            }
-          }}
+          onChange={(e) => setMonthSel(e.target.value)}
         >
           <option value="recent">Last 30 days</option>
           {months.map((m) => (
@@ -162,12 +168,7 @@ export function DateRangePicker({ onChange, bounds, mode, onModeChange }: Props)
           aria-label="Year"
           className={controlClass}
           value={yearSel}
-          onChange={(e) => {
-            const k = e.target.value
-            setYearSel(k)
-            if (k === 'recent') apply(lastNDays(365))
-            else apply(yearRangeOf(Number(k)))
-          }}
+          onChange={(e) => setYearSel(e.target.value)}
         >
           <option value="recent">Last 365 days</option>
           {years.map((y) => (

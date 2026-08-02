@@ -16,6 +16,7 @@ import { capitalize, prettyCategory, seriesLabel } from '../lib/labels'
 import { DEFAULT_SERIES_COLORS } from '../lib/chartColors'
 import { lastNDays, today, type DateRange } from '../lib/dateRange'
 import { fetchDayAttributes, type DayAttributes } from '../lib/dayFilters'
+import { usePersistedState, setSerde, setMapSerde } from '../hooks/usePersistedState'
 import { CityControls } from './CityControls'
 import { Sidebar, type SheetState, type SidebarCategory } from './Sidebar'
 import { DayFilters } from './DayFilters'
@@ -49,23 +50,30 @@ interface ChartGroup {
 
 export function Dashboard() {
   const [discovery, setDiscovery] = useState<Discovery>({ status: 'loading' })
-  const [includedCities, setIncludedCities] = useState<Set<string>>(new Set())
-  const [overlap, setOverlap] = useState(true)
-  const [scaleMode, setScaleMode] = useState<ScaleMode>('actual')
-  const [granularity, setGranularity] = useState<Granularity>('day')
-  const [rangeMode, setRangeMode] = useState<RangeMode>('month')
-  const [salesAgg, setSalesAgg] = useState<SalesAgg>('total')
-  const [range, setRange] = useState<DateRange>(() => lastNDays(30))
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // Persisted config — survives reloads (see usePersistedState).
+  const [includedCities, setIncludedCities] = usePersistedState('ft.cities', new Set<string>(), setSerde)
+  const [overlap, setOverlap] = usePersistedState('ft.overlap', true)
+  const [scaleMode, setScaleMode] = usePersistedState<ScaleMode>('ft.scale', 'actual')
+  const [granularity, setGranularity] = usePersistedState<Granularity>('ft.gran', 'day')
+  const [rangeMode, setRangeMode] = usePersistedState<RangeMode>('ft.rangeMode', 'month')
+  const [salesAgg, setSalesAgg] = usePersistedState<SalesAgg>('ft.salesAgg', 'total')
+  const [range, setRange] = useState<DateRange>(() => lastNDays(30)) // derived from range picker
+  const [expanded, setExpanded] = usePersistedState('ft.expanded', new Set<string>(), setSerde)
   // City-category selections keyed by `${category}::${column}`; globals by `${sheet}::${column}`.
-  const [citySelections, setCitySelections] = useState<Set<string>>(
-    () => new Set(['weather::nice_day_score']),
+  const [citySelections, setCitySelections] = usePersistedState(
+    'ft.citySel',
+    new Set(['weather::nice_day_score']),
+    setSerde,
   )
-  const [globalSelections, setGlobalSelections] = useState<Set<string>>(new Set())
-  const [colorById, setColorById] = useState<Record<string, string>>({})
+  const [globalSelections, setGlobalSelections] = usePersistedState('ft.globalSel', new Set<string>(), setSerde)
+  const [colorById, setColorById] = usePersistedState<Record<string, string>>('ft.colors', {})
   const [sheetStates, setSheetStates] = useState<Record<string, SheetState>>({})
   const [dayAttributes, setDayAttributes] = useState<DayAttributes | null>(null)
-  const [filterState, setFilterState] = useState<Record<string, Set<string>>>({})
+  const [filterState, setFilterState] = usePersistedState<Record<string, Set<string>>>(
+    'ft.filters',
+    {},
+    setMapSerde,
+  )
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const inFlight = useRef<Set<string>>(new Set())
@@ -102,7 +110,8 @@ export function Dashboard() {
         if (cancelled) return
         const model = buildModel(names)
         setDiscovery({ status: 'ready', model })
-        setIncludedCities(new Set(model.cities))
+        // Default to all cities only if nothing was restored from storage.
+        setIncludedCities((prev) => (prev.size > 0 ? prev : new Set(model.cities)))
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -125,9 +134,13 @@ export function Dashboard() {
       .then((attrs) => {
         if (cancelled) return
         setDayAttributes(attrs)
-        const init: Record<string, Set<string>> = {}
-        for (const d of attrs.dimensions) init[d.column] = new Set(d.values)
-        setFilterState(init)
+        // Default every filter value to checked, unless restored from storage.
+        setFilterState((prev) => {
+          if (Object.keys(prev).length > 0) return prev
+          const init: Record<string, Set<string>> = {}
+          for (const d of attrs.dimensions) init[d.column] = new Set(d.values)
+          return init
+        })
       })
       .catch(() => {})
     return () => {
