@@ -16,6 +16,7 @@ interface Props {
   data: ChartRow[]
   series: SeriesSpec[]
   colorById: Record<string, string>
+  percent?: boolean
 }
 
 interface TooltipInjectedProps {
@@ -29,14 +30,20 @@ function fmtValue(v: number, unit: string): string {
   return `${n} ${unit}`
 }
 
+function fmtPercent(v: number): string {
+  return `${v > 0 ? '+' : ''}${v.toFixed(1)}%`
+}
+
 function ChartTooltip({
   active,
   payload,
   series,
   colors,
+  percent,
 }: TooltipInjectedProps & {
   series: SeriesSpec[]
   colors: ReturnType<typeof chartColors>
+  percent?: boolean
 }) {
   if (!active || !payload?.length) return null
   const row = (payload[0] as unknown as { payload: ChartRow }).payload
@@ -66,7 +73,7 @@ function ChartTooltip({
             />
             <span style={{ color: colors.inkMuted }}>{labelById.get(p.dataKey) ?? p.dataKey}</span>
             <span className="ml-auto font-semibold tabular-nums">
-              {fmtValue(p.value, unitById.get(p.dataKey) ?? '')}
+              {percent ? fmtPercent(p.value) : fmtValue(p.value, unitById.get(p.dataKey) ?? '')}
             </span>
           </div>
         ))}
@@ -75,7 +82,7 @@ function ChartTooltip({
   )
 }
 
-export function MultiTrendChart({ data, series, colorById }: Props) {
+export function MultiTrendChart({ data, series, colorById, percent }: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
   const labelById = new Map(series.map((s) => [s.id, s.label]))
@@ -101,11 +108,15 @@ export function MultiTrendChart({ data, series, colorById }: Props) {
             width={56}
             axisLine={false}
             tickLine={false}
-            tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+            tickFormatter={(v: number) =>
+              percent
+                ? `${v > 0 ? '+' : ''}${v}%`
+                : v.toLocaleString(undefined, { maximumFractionDigits: 1 })
+            }
           />
           <Tooltip
             cursor={{ stroke: colors.axis, strokeDasharray: '3 3' }}
-            content={<ChartTooltip series={series} colors={colors} />}
+            content={<ChartTooltip series={series} colors={colors} percent={percent} />}
           />
           <Legend
             formatter={(value: string) => (

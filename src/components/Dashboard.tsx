@@ -3,8 +3,11 @@ import { fetchSheetData } from '../lib/sheet'
 import {
   aggregateMerged,
   bucketDates,
+  rebaseToPercent,
+  seriesCorrelations,
   type ChartRow,
   type Granularity,
+  type PairCorrelation,
   type SeriesSpec,
 } from '../lib/data'
 import { metricMeta } from '../lib/metricMeta'
@@ -22,22 +25,33 @@ import { MultiTrendChart } from './MultiTrendChart'
 
 type SalesAgg = 'total' | 'average'
 
+function corrLabel(r: number): string {
+  const a = Math.abs(r)
+  if (a < 0.2) return 'no clear relation'
+  const strength = a < 0.4 ? 'weak' : a < 0.6 ? 'moderate' : a < 0.8 ? 'strong' : 'very strong'
+  return `${strength} ${r > 0 ? 'positive' : 'negative'}`
+}
+
 type Discovery =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'ready'; model: WorkbookModel }
+
+type ScaleMode = 'actual' | 'percent'
 
 interface ChartGroup {
   key: string
   title: string | null
   series: SeriesSpec[]
   data: ChartRow[]
+  correlations: PairCorrelation[]
 }
 
 export function Dashboard() {
   const [discovery, setDiscovery] = useState<Discovery>({ status: 'loading' })
   const [includedCities, setIncludedCities] = useState<Set<string>>(new Set())
   const [overlap, setOverlap] = useState(true)
+  const [scaleMode, setScaleMode] = useState<ScaleMode>('actual')
   const [granularity, setGranularity] = useState<Granularity>('day')
   const [rangeMode, setRangeMode] = useState<RangeMode>('month')
   const [salesAgg, setSalesAgg] = useState<SalesAgg>('total')
@@ -434,36 +448,34 @@ export function Dashboard() {
     [dayCountByT],
   )
 
+  // Build one group's chart: actual data (for correlation, which is scale-free)
+  // then rebased to % if that scale mode is active.
+  const makeGroup = useCallback(
+    (key: string, title: string | null, specs: SeriesSpec[]): ChartGroup => {
+      const actual = withDayCounts(buildData(specs))
+      const correlations = seriesCorrelations(actual, specs)
+      const data = scaleMode === 'percent' ? rebaseToPercent(actual, specs.map((s) => s.id)) : actual
+      return { key, title, series: specs, data, correlations }
+    },
+    [withDayCounts, buildData, scaleMode],
+  )
+
   const chartGroups = useMemo<ChartGroup[]>(() => {
     if (series.length === 0) return []
-    if (overlap) return [{ key: 'all', title: null, series, data: withDayCounts(buildData(series)) }]
+    if (overlap) return [makeGroup('all', null, series)]
 
     const groups: ChartGroup[] = []
     if (discovery.status === 'ready') {
       for (const city of discovery.model.cities) {
         if (!includedCities.has(city)) continue
         const citySeries = series.filter((s) => parseTabName(s.sheet).city === city)
-        if (citySeries.length) {
-          groups.push({
-            key: city,
-            title: capitalize(city),
-            series: citySeries,
-            data: withDayCounts(buildData(citySeries)),
-          })
-        }
+        if (citySeries.length) groups.push(makeGroup(city, capitalize(city), citySeries))
       }
     }
     const globalSeries = series.filter((s) => parseTabName(s.sheet).city === null)
-    if (globalSeries.length) {
-      groups.push({
-        key: '__global__',
-        title: 'Markets',
-        series: globalSeries,
-        data: withDayCounts(buildData(globalSeries)),
-      })
-    }
+    if (globalSeries.length) groups.push(makeGroup('__global__', 'Markets', globalSeries))
     return groups
-  }, [series, overlap, buildData, withDayCounts, discovery, includedCities])
+  }, [series, overlap, makeGroup, discovery, includedCities])
 
   if (discovery.status === 'loading') {
     return <div className="py-20 text-center text-slate-400">Loading workbook…</div>
@@ -522,6 +534,31 @@ export function Dashboard() {
                 onChange={setGranularity}
                 maxLevel={maxLevel}
               />
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Scale</span>
+                <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
+                  {([
+                    ['actual', 'Actual'],
+                    ['percent', '% change'],
+                  ] as const).map(([v, l]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setScaleMode(v)}
+                      aria-pressed={scaleMode === v}
+                      className={
+                        'rounded-md px-3 py-1 text-sm font-medium transition-colors ' +
+                        (scaleMode === v
+                          ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100')
+                      }
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                   Values
@@ -605,7 +642,28 @@ export function Dashboard() {
                       {g.title}
                     </h3>
                   )}
-                  <MultiTrendChart data={g.data} series={g.series} colorById={resolvedColors} />
+                  <MultiTrendChart
+                    data={g.data}
+                    series={g.series}
+                    colorById={resolvedColors}
+                    percent={scaleMode === 'percent'}
+                  />
+                  {g.correlations.length > 0 && (
+                    <div className="mt-2 flex flex-col gap-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      {g.correlations.slice(0, 3).map((c, i) => (
+                        <div key={i}>
+                          <span className="text-slate-600 dark:text-slate-300">
+                            {c.a} ↔ {c.b}
+                          </span>
+                          : r ={' '}
+                          <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-200">
+                            {c.r.toFixed(2)}
+                          </span>{' '}
+                          · {corrLabel(c.r)} <span className="opacity-60">(n={c.n})</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

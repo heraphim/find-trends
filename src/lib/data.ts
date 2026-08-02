@@ -182,6 +182,83 @@ function bucketAggregate(
     .sort((a, b) => a.t - b.t)
 }
 
+// Rebase each series to % change from its first in-view value, so series of
+// very different magnitudes become comparable on one axis.
+export function rebaseToPercent(rows: ChartRow[], seriesIds: string[]): ChartRow[] {
+  const base: Record<string, number> = {}
+  for (const id of seriesIds) {
+    for (const r of rows) {
+      const v = r[id]
+      if (typeof v === 'number') {
+        base[id] = v
+        break
+      }
+    }
+  }
+  return rows.map((r) => {
+    const out: ChartRow = { t: r.t, label: r.label, full: r.full }
+    if (typeof r._days === 'number') out._days = r._days
+    for (const id of seriesIds) {
+      const v = r[id]
+      const b = base[id]
+      if (typeof v === 'number' && b !== undefined && b !== 0) {
+        out[id] = Math.round((v / b - 1) * 1000) / 10
+      }
+    }
+    return out
+  })
+}
+
+// Pearson correlation of two equal-length numeric arrays.
+export function pearson(xs: number[], ys: number[]): number | null {
+  const n = xs.length
+  if (n < 3) return null
+  let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0
+  for (let i = 0; i < n; i++) {
+    sx += xs[i]
+    sy += ys[i]
+    sxx += xs[i] * xs[i]
+    syy += ys[i] * ys[i]
+    sxy += xs[i] * ys[i]
+  }
+  const dx = Math.sqrt(n * sxx - sx * sx)
+  const dy = Math.sqrt(n * syy - sy * sy)
+  if (dx === 0 || dy === 0) return null
+  return (n * sxy - sx * sy) / (dx * dy)
+}
+
+export interface PairCorrelation {
+  a: string
+  b: string
+  r: number
+  n: number
+}
+
+// Pairwise correlations between series, on points where both have a value.
+export function seriesCorrelations(
+  rows: ChartRow[],
+  series: { id: string; label: string }[],
+): PairCorrelation[] {
+  const out: PairCorrelation[] = []
+  for (let i = 0; i < series.length; i++) {
+    for (let j = i + 1; j < series.length; j++) {
+      const xs: number[] = []
+      const ys: number[] = []
+      for (const r of rows) {
+        const va = r[series[i].id]
+        const vb = r[series[j].id]
+        if (typeof va === 'number' && typeof vb === 'number') {
+          xs.push(va)
+          ys.push(vb)
+        }
+      }
+      const r = pearson(xs, ys)
+      if (r !== null) out.push({ a: series[i].label, b: series[j].label, r, n: xs.length })
+    }
+  }
+  return out.sort((x, y) => Math.abs(y.r) - Math.abs(x.r))
+}
+
 // Count how many of the given dates fall into each bucket (same bucketing as
 // the charts), so a point's aggregate can report the days behind it.
 export function bucketDates(dates: Date[], g: Granularity): Map<number, number> {
