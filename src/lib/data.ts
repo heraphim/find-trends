@@ -102,6 +102,7 @@ export interface SeriesSpec {
   sheet: string
   column: string
   label: string // human label, e.g. "Brasov · temp_mean"
+  unit: string // display unit for this series ('' = none)
 }
 
 // A row of the merged chart dataset: bucket time + one % value per series id.
@@ -169,6 +170,26 @@ function bucketAggregate(
   return [...buckets.entries()]
     .map(([t, b]) => ({ t, value: agg === 'sum' ? b.sum : b.sum / b.count, date: b.date }))
     .sort((a, b) => a.t - b.t)
+}
+
+// Merge every selected series into ONE dataset of actual values on a shared
+// time axis (units may differ — the chart shows each series' unit per point).
+export function aggregateMerged(
+  inputs: { spec: SeriesSpec; rows: DataRow[]; meta: ChartMeta }[],
+  g: Granularity,
+): ChartRow[] {
+  const merged = new Map<number, ChartRow>()
+  for (const { spec, rows, meta } of inputs) {
+    for (const p of bucketAggregate(rows, spec.column, g, meta.agg, meta.transform)) {
+      let chartRow = merged.get(p.t)
+      if (!chartRow) {
+        chartRow = { t: p.t, label: axisLabel(p.date, g), full: tooltipLabel(p.date, g) }
+        merged.set(p.t, chartRow)
+      }
+      chartRow[spec.id] = round(p.value, 2)
+    }
+  }
+  return [...merged.values()].sort((a, b) => a.t - b.t)
 }
 
 export interface GroupChart {

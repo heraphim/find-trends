@@ -15,7 +15,6 @@ import type { ChartRow, SeriesSpec } from '../lib/data'
 interface Props {
   data: ChartRow[]
   series: SeriesSpec[]
-  unit: string
 }
 
 interface TooltipInjectedProps {
@@ -34,15 +33,14 @@ function ChartTooltip({
   payload,
   series,
   colors,
-  unit,
 }: TooltipInjectedProps & {
   series: SeriesSpec[]
   colors: ReturnType<typeof chartColors>
-  unit: string
 }) {
   if (!active || !payload?.length) return null
   const full = (payload[0] as unknown as { payload: ChartRow }).payload.full
   const labelById = new Map(series.map((s) => [s.id, s.label]))
+  const unitById = new Map(series.map((s) => [s.id, s.unit]))
   return (
     <div
       className="rounded-lg border px-3 py-2 text-xs shadow-lg"
@@ -57,7 +55,9 @@ function ChartTooltip({
               style={{ background: p.color }}
             />
             <span style={{ color: colors.inkMuted }}>{labelById.get(p.dataKey) ?? p.dataKey}</span>
-            <span className="ml-auto font-semibold tabular-nums">{fmtValue(p.value, unit)}</span>
+            <span className="ml-auto font-semibold tabular-nums">
+              {fmtValue(p.value, unitById.get(p.dataKey) ?? '')}
+            </span>
           </div>
         ))}
       </div>
@@ -65,13 +65,13 @@ function ChartTooltip({
   )
 }
 
-export function MultiTrendChart({ data, series, unit }: Props) {
+export function MultiTrendChart({ data, series }: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
   const labelById = new Map(series.map((s) => [s.id, s.label]))
 
   return (
-    <div className="h-72 w-full">
+    <div className="h-96 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
           <CartesianGrid stroke={colors.grid} vertical={false} />
@@ -93,7 +93,7 @@ export function MultiTrendChart({ data, series, unit }: Props) {
           />
           <Tooltip
             cursor={{ stroke: colors.axis, strokeDasharray: '3 3' }}
-            content={<ChartTooltip series={series} colors={colors} unit={unit} />}
+            content={<ChartTooltip series={series} colors={colors} />}
           />
           <Legend
             formatter={(value: string) => (

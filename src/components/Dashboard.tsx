@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchSheetData } from '../lib/sheet'
 import {
-  buildGroupCharts,
+  aggregateMerged,
   type Granularity,
   type SeriesSpec,
 } from '../lib/data'
@@ -108,11 +108,16 @@ export function Dashboard() {
     const first = categories[0].sheet
     const state = sheetStates[first]
     if (state?.status !== 'ready') return
-    const starter =
-      state.data.columns.find((c) => c.kind === 'metric' && c.key === 'temp_mean') ??
-      state.data.columns.find((c) => c.kind === 'metric')
-    if (starter) {
-      setSelected(new Set([selKey(first, starter.key)]))
+    const metricKeys = new Set(
+      state.data.columns.filter((c) => c.kind === 'metric').map((c) => c.key),
+    )
+    let starters = ['sunshine_percentage', 'nice_day_score'].filter((k) => metricKeys.has(k))
+    if (starters.length === 0) {
+      const firstMetric = state.data.columns.find((c) => c.kind === 'metric')
+      if (firstMetric) starters = [firstMetric.key]
+    }
+    if (starters.length) {
+      setSelected(new Set(starters.map((k) => selKey(first, k))))
     }
     didAutoSelect.current = true
   }, [categories, sheetStates])
@@ -161,18 +166,24 @@ export function Dashboard() {
     return [...selected].map((key) => {
       const [sheet, column] = key.split('::')
       const tab = parseTabName(sheet)
-      return { id: key, sheet, column, label: seriesLabel(tab.city ?? tab.category, column) }
+      return {
+        id: key,
+        sheet,
+        column,
+        label: seriesLabel(tab.city ?? tab.category, column),
+        unit: metricMeta(column).unit,
+      }
     })
   }, [selected])
 
-  const groupCharts = useMemo(() => {
+  const chartData = useMemo(() => {
     const inputs = series.flatMap((spec) => {
       const st = sheetStates[spec.sheet]
       if (st?.status !== 'ready') return []
       const rows = st.data.rows.filter((r) => r.date >= range.start && r.date <= range.end)
       return [{ spec, rows, meta: metricMeta(spec.column) }]
     })
-    return buildGroupCharts(inputs, granularity)
+    return aggregateMerged(inputs, granularity)
   }, [series, sheetStates, granularity, range])
 
   if (discovery.status === 'loading') {
@@ -197,7 +208,7 @@ export function Dashboard() {
             <div>
               <h2 className="text-lg font-semibold">Trends</h2>
               <p className="text-xs text-slate-400">
-                Actual values over the selected range, grouped by unit.
+                Actual values over the selected range.
               </p>
             </div>
             <GranularityToggle value={granularity} onChange={setGranularity} />
@@ -229,21 +240,12 @@ export function Dashboard() {
             <div className="flex h-72 items-center justify-center rounded-xl border border-dashed border-slate-300 px-6 text-center text-sm text-slate-400 dark:border-slate-700">
               Pick metrics from the categories on the right to plot them.
             </div>
-          ) : groupCharts.length === 0 ? (
-            <div className="flex h-72 items-center justify-center text-sm text-slate-400">
+          ) : chartData.length === 0 ? (
+            <div className="flex h-96 items-center justify-center text-sm text-slate-400">
               Loading series…
             </div>
           ) : (
-            <div className="flex flex-col gap-6">
-              {groupCharts.map((gc) => (
-                <div key={gc.key}>
-                  <h3 className="mb-1 text-sm font-medium text-slate-600 dark:text-slate-300">
-                    {gc.title}
-                  </h3>
-                  <MultiTrendChart data={gc.data} series={gc.series} unit={gc.unit} />
-                </div>
-              ))}
-            </div>
+            <MultiTrendChart data={chartData} series={series} />
           )}
         </section>
 
