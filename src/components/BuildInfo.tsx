@@ -12,27 +12,29 @@ function RelativeTime({ iso }: { iso: string }) {
 
   const absolute = iso ? new Date(iso).toLocaleString() : 'unknown'
   return (
-    <time dateTime={iso} title={absolute}>
+    <time
+      dateTime={iso}
+      title={absolute}
+      className="font-medium tabular-nums text-slate-700 dark:text-slate-200"
+    >
       {formatRelative(iso)}
     </time>
   )
 }
 
+// Floating pill anchored to the bottom-right corner.
 export function BuildInfo() {
   return (
-    <dl className="build-info">
-      <div>
-        <dt>Last commit</dt>
-        <dd>
-          <RelativeTime iso={__COMMIT_DATE__} />
-        </dd>
-      </div>
-      <div>
-        <dt>Deployed</dt>
-        <dd>
-          <RelativeTime iso={__BUILD_DATE__} />
-        </dd>
-      </div>
-    </dl>
+    <div className="fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs shadow-lg backdrop-blur-sm dark:border-slate-700 dark:bg-slate-800/80">
+      <span className="flex items-center gap-1.5">
+        <span className="text-slate-400 dark:text-slate-500">Commit</span>
+        <RelativeTime iso={__COMMIT_DATE__} />
+      </span>
+      <span className="h-3 w-px bg-slate-300 dark:bg-slate-600" />
+      <span className="flex items-center gap-1.5">
+        <span className="text-slate-400 dark:text-slate-500">Deployed</span>
+        <RelativeTime iso={__BUILD_DATE__} />
+      </span>
+    </div>
   )
 }
