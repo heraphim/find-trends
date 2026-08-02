@@ -39,7 +39,7 @@ export function Dashboard() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // City-category selections keyed by `${category}::${column}`; globals by `${sheet}::${column}`.
   const [citySelections, setCitySelections] = useState<Set<string>>(
-    () => new Set(['weather::sunshine_percentage', 'weather::nice_day_score']),
+    () => new Set(['weather::nice_day_score']),
   )
   const [globalSelections, setGlobalSelections] = useState<Set<string>>(new Set())
   const [colorById, setColorById] = useState<Record<string, string>>({})
@@ -82,7 +82,7 @@ export function Dashboard() {
         if (cancelled) return
         const model = buildModel(names)
         setDiscovery({ status: 'ready', model })
-        setIncludedCities(new Set(model.cities.slice(0, 1)))
+        setIncludedCities(new Set(model.cities))
       })
       .catch((err: unknown) => {
         if (!cancelled) {
