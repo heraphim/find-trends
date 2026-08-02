@@ -35,6 +35,10 @@ function isNumeric(v: string): boolean {
   return Number.isFinite(Number(v))
 }
 
+// Numeric columns that are really categorical codes, not magnitudes — force
+// them to "event" so they classify days instead of plotting as a line.
+const FORCE_EVENT = new Set(['weather_code'])
+
 // Classify every non-date column by sampling its values:
 // all-numeric → metric (plottable), otherwise → event (day classifier).
 export function classifyColumns(
@@ -46,6 +50,7 @@ export function classifyColumns(
   const sample = records.slice(0, 60)
 
   return keys.map((key) => {
+    if (FORCE_EVENT.has(key)) return { key, kind: 'event' as const }
     let seenValue = false
     let allNumeric = true
     for (const rec of sample) {
