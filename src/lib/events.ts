@@ -28,15 +28,81 @@ async function fetchParse(params: Record<string, string>): Promise<Record<string
   return res.json()
 }
 
+// ---- importance scoring (heuristic; no LLM/backend) ----
+
+export type Tier = 'major' | 'notable' | 'minor'
+
+// How much each Current-Events topic matters to a general audience.
+const TOPIC_WEIGHT: Record<string, number> = {
+  'armed conflicts and attacks': 5,
+  'disasters and accidents': 5,
+  'politics and elections': 4,
+  'international relations': 4,
+  'law and crime': 3,
+  'business and economy': 3,
+  'health and environment': 3,
+  'health and medicine': 3,
+  'science and technology': 2,
+  'arts and culture': 1,
+  sports: 1,
+}
+
+const IMPACT_KEYWORDS = [
+  /\bkill/i, /\bdead\b/i, /\bdeaths?\b/i, /\bearthquake\b/i, /\btsunami\b/i,
+  /\bwar\b/i, /\binvasion\b/i, /\bcoup\b/i, /\bceasefire\b/i, /\bmissile\b/i,
+  /\bairstrike\b/i, /\bnuclear\b/i, /\bpandemic\b/i, /\boutbreak\b/i, /\bresign/i,
+  /\belection\b/i, /\bpresident\b/i, /\bprime minister\b/i, /\bsanctions?\b/i,
+  /\bflood/i, /\bwildfire/i, /\bhurricane\b/i, /\btyphoon\b/i, /\bcollapse/i,
+  /\bbankrupt/i, /\btreaty\b/i, /\bsummit\b/i, /\bassassinat/i, /\bgenocide\b/i,
+  /\bevacuat/i, /\bstate of emergency\b/i,
+]
+
+function countTrailingSources(text: string): number {
+  const m = text.match(/(\s*\([^()]*\))+\s*$/)
+  return m ? (m[0].match(/\(/g) || []).length : 0
+}
+
+function stripTrailingSources(text: string): string {
+  return text.replace(/(\s*\([^()]*\))+\s*$/, '').trim()
+}
+
+function casualtyBoost(text: string): number {
+  const m = text.match(/([\d,]+)\s+(?:people\s+)?(?:are\s+|were\s+)?(?:killed|dead|die)/i)
+  if (!m) return 0
+  const n = Number(m[1].replace(/,/g, ''))
+  return n > 0 ? Math.min(4, Math.log10(n)) : 0
+}
+
+// Score an item: topic weight + impact keywords + casualties + coverage.
+function scoreItem(topic: string, cleaned: string, base: number): number {
+  const topicW = topic ? (TOPIC_WEIGHT[topic.toLowerCase()] ?? 2) : base
+  const impact = IMPACT_KEYWORDS.reduce((n, re) => (re.test(cleaned) ? n + 1 : n), 0)
+  const sources = Math.min(3, countTrailingSources(cleaned))
+  return topicW + impact + casualtyBoost(cleaned) + sources * 0.5
+}
+
+function tierFor(score: number): Tier {
+  if (score >= 6) return 'major'
+  if (score >= 3.5) return 'notable'
+  return 'minor'
+}
+
 // ---- daily "current events" digest ----
+
+export interface ScoredItem {
+  topic: string
+  text: string
+  score: number
+  tier: Tier
+}
 
 export interface DayEventBlock {
   date: Date
-  items: { topic: string; text: string }[]
+  items: ScoredItem[]
 }
 
-function parseCurrentEvents(wikitext: string): { topic: string; text: string }[] {
-  const items: { topic: string; text: string }[] = []
+function parseCurrentEvents(wikitext: string): ScoredItem[] {
+  const items: ScoredItem[] = []
   let topic = ''
   for (const raw of wikitext.split('\n')) {
     const line = raw.trim()
@@ -48,11 +114,14 @@ function parseCurrentEvents(wikitext: string): { topic: string; text: string }[]
     }
     // Prefer the news detail bullets (** and deeper); skip the bare topic link (*).
     if (line.startsWith('**')) {
-      const text = cleanWikitext(line.replace(/^\*+\s*/, ''))
-      if (text.length > 12) items.push({ topic, text })
+      const cleaned = cleanWikitext(line.replace(/^\*+\s*/, ''))
+      if (cleaned.length > 12) {
+        const score = scoreItem(topic, cleaned, 2)
+        items.push({ topic, text: stripTrailingSources(cleaned), score, tier: tierFor(score) })
+      }
     }
   }
-  return items
+  return items.sort((a, b) => b.score - a.score)
 }
 
 const dayCache = new Map<string, Promise<DayEventBlock | null>>()
@@ -79,6 +148,14 @@ function fetchDayEvents(date: Date): Promise<DayEventBlock | null> {
 export interface MajorEvent {
   date: Date
   text: string
+  score: number
+  tier: Tier
+}
+
+// Year-article events have no topic header; treat them as curated (base 3).
+function makeMajor(date: Date, text: string): MajorEvent {
+  const score = scoreItem('', text, 3)
+  return { date, text, score, tier: tierFor(score) }
 }
 
 function parseYearEvents(wikitext: string, year: number): MajorEvent[] {
@@ -98,13 +175,13 @@ function parseYearEvents(wikitext: string, year: number): MajorEvent[] {
         curDate = new Date(year, mi, Number(dateLink[2]))
         const after = line.replace(/^\*\s*\[\[[A-Z][a-z]+\s+\d{1,2}\]\]/, '').replace(/^\s*[–—-]\s*/, '')
         const t = cleanWikitext(after)
-        if (t.length > 12) out.push({ date: curDate, text: t })
+        if (t.length > 12) out.push(makeMajor(curDate, t))
       }
       continue
     }
     if (line.startsWith('**') && curDate) {
       const t = cleanWikitext(line.replace(/^\*+\s*/, ''))
-      if (t.length > 12) out.push({ date: curDate, text: t })
+      if (t.length > 12) out.push(makeMajor(curDate, t))
     }
   }
   return out

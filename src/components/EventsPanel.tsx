@@ -1,6 +1,26 @@
 import { useEffect, useState } from 'react'
-import { fetchEventsForRange, type RangeEvents } from '../lib/events'
+import { fetchEventsForRange, type RangeEvents, type Tier } from '../lib/events'
 import type { DateRange } from '../lib/dateRange'
+import { usePersistedState } from '../hooks/usePersistedState'
+
+const TIER_STYLE: Record<Tier, string> = {
+  major: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
+  notable: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  minor: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+}
+
+function TierTag({ tier }: { tier: Tier }) {
+  return (
+    <span
+      className={
+        'shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ' +
+        TIER_STYLE[tier]
+      }
+    >
+      {tier}
+    </span>
+  )
+}
 
 interface Props {
   range: DateRange
@@ -25,6 +45,7 @@ const MAJOR_CAP = 150
 
 export function EventsPanel({ range, focused, onClear }: Props) {
   const [state, setState] = useState<State>({ status: 'loading' })
+  const [importantOnly, setImportantOnly] = usePersistedState('ft.importantOnly', true)
 
   useEffect(() => {
     let cancelled = false
@@ -64,9 +85,20 @@ export function EventsPanel({ range, focused, onClear }: Props) {
           )}
         </span>
       </div>
-      {!focused && (
-        <p className="-mt-2 mb-3 text-xs text-slate-400">Tip: click a point in the chart to see that day/period.</p>
-      )}
+      <div className="-mt-2 mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-slate-400">
+          {focused ? 'Ranked by estimated importance.' : 'Tip: click a point in the chart to see that day/period.'}
+        </p>
+        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={importantOnly}
+            onChange={() => setImportantOnly((v) => !v)}
+            className="h-3.5 w-3.5 accent-blue-600"
+          />
+          Important only
+        </label>
+      </div>
 
       {state.status === 'loading' && (
         <div className="py-6 text-center text-sm text-slate-400">Loading events…</div>
@@ -74,32 +106,44 @@ export function EventsPanel({ range, focused, onClear }: Props) {
       {state.status === 'error' && (
         <div className="py-6 text-center text-sm text-red-500">{state.message}</div>
       )}
-      {state.status === 'ready' && <EventsBody data={state.data} />}
+      {state.status === 'ready' && <EventsBody data={state.data} importantOnly={importantOnly} />}
     </section>
   )
 }
 
-function EventsBody({ data }: { data: RangeEvents }) {
+function EventsBody({ data, importantOnly }: { data: RangeEvents; importantOnly: boolean }) {
+  const keep = (tier: Tier) => !importantOnly || tier !== 'minor'
+
   if (data.kind === 'daily') {
-    if (data.blocks.length === 0) {
-      return <div className="py-6 text-center text-sm text-slate-400">No events found for this range.</div>
+    const blocks = data.blocks
+      .map((b) => ({ date: b.date, items: b.items.filter((it) => keep(it.tier)) }))
+      .filter((b) => b.items.length > 0)
+    if (blocks.length === 0) {
+      return (
+        <div className="py-6 text-center text-sm text-slate-400">
+          {importantOnly ? 'No notable events — untick “Important only” to see all.' : 'No events found for this range.'}
+        </div>
+      )
     }
     return (
       <div className="flex flex-col gap-4">
-        {data.blocks.map((b) => (
+        {blocks.map((b) => (
           <div key={b.date.getTime()}>
             <h3 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
               {dayFmt.format(b.date)}
             </h3>
-            <ul className="flex flex-col gap-1">
+            <ul className="flex flex-col gap-1.5">
               {b.items.map((it, i) => (
-                <li key={i} className="text-sm text-slate-600 dark:text-slate-300">
-                  {it.topic && (
-                    <span className="mr-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                      {it.topic}
-                    </span>
-                  )}
-                  {it.text}
+                <li key={i} className="flex items-start gap-1.5 text-sm text-slate-600 dark:text-slate-300">
+                  <TierTag tier={it.tier} />
+                  <span>
+                    {it.topic && (
+                      <span className="mr-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                        {it.topic}
+                      </span>
+                    )}
+                    {it.text}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -110,16 +154,22 @@ function EventsBody({ data }: { data: RangeEvents }) {
   }
 
   // major events (long ranges)
-  if (data.events.length === 0) {
-    return <div className="py-6 text-center text-sm text-slate-400">No major events found for this range.</div>
+  const events = data.events.filter((e) => keep(e.tier))
+  if (events.length === 0) {
+    return (
+      <div className="py-6 text-center text-sm text-slate-400">
+        {importantOnly ? 'No notable events — untick “Important only” to see all.' : 'No major events found for this range.'}
+      </div>
+    )
   }
-  const shown = data.events.slice(0, MAJOR_CAP)
-  const extra = data.events.length - shown.length
+  const shown = events.slice(0, MAJOR_CAP)
+  const extra = events.length - shown.length
   return (
     <>
       <ul className="flex flex-col gap-1.5">
         {shown.map((e, i) => (
-          <li key={i} className="flex gap-3 text-sm">
+          <li key={i} className="flex items-start gap-2 text-sm">
+            <TierTag tier={e.tier} />
             <span className="w-24 shrink-0 tabular-nums text-slate-400">{shortFmt.format(e.date)}</span>
             <span className="text-slate-600 dark:text-slate-300">{e.text}</span>
           </li>
