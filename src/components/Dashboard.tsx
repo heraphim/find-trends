@@ -23,6 +23,7 @@ import { DayFilters } from './DayFilters'
 import { GranularityToggle, GRANULARITY_ORDER } from './GranularityToggle'
 import { DateRangePicker, type RangeMode } from './DateRangePicker'
 import { MultiTrendChart } from './MultiTrendChart'
+import { EventsPanel } from './EventsPanel'
 
 type SalesAgg = 'total' | 'average'
 
@@ -707,6 +708,9 @@ export function Dashboard() {
           />
         </div>
       </div>
+
+      {/* Global events for the selected range (bottom) */}
+      <EventsPanel range={range} />
     </div>
   )
 }
