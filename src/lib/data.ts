@@ -4,7 +4,7 @@ export interface DataRow {
   values: Record<string, number>
 }
 
-export type Granularity = 'daily' | 'weekly' | 'monthly'
+export type Granularity = 'day' | 'week' | 'month' | 'year' | 'all'
 export type ColumnKind = 'metric' | 'event'
 
 // A column and whether it's a plottable number or a categorical "event".
@@ -68,9 +68,14 @@ export function classifyColumns(
 
 // ---- bucketing & labels ----
 
+// A fixed epoch so granularity 'all' collapses every row into one bucket.
+const ALL_BUCKET = new Date(2000, 0, 1)
+
 function bucketStart(d: Date, g: Granularity): Date {
-  if (g === 'monthly') return new Date(d.getFullYear(), d.getMonth(), 1)
-  if (g === 'weekly') {
+  if (g === 'all') return ALL_BUCKET
+  if (g === 'year') return new Date(d.getFullYear(), 0, 1)
+  if (g === 'month') return new Date(d.getFullYear(), d.getMonth(), 1)
+  if (g === 'week') {
     const mondayOffset = (d.getDay() + 6) % 7 // 0 = Monday
     return new Date(d.getFullYear(), d.getMonth(), d.getDate() - mondayOffset)
   }
@@ -86,12 +91,17 @@ const fullDay = new Intl.DateTimeFormat(undefined, {
 })
 
 function axisLabel(d: Date, g: Granularity): string {
-  return g === 'monthly' ? monthYear.format(d) : dayMonth.format(d)
+  if (g === 'all') return 'All'
+  if (g === 'year') return String(d.getFullYear())
+  if (g === 'month') return monthYear.format(d)
+  return dayMonth.format(d)
 }
 
 function tooltipLabel(d: Date, g: Granularity): string {
-  if (g === 'monthly') return monthYear.format(d)
-  if (g === 'weekly') return `Week of ${fullDay.format(d)}`
+  if (g === 'all') return 'All data'
+  if (g === 'year') return String(d.getFullYear())
+  if (g === 'month') return monthYear.format(d)
+  if (g === 'week') return `Week of ${fullDay.format(d)}`
   return fullDay.format(d)
 }
 

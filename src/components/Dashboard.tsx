@@ -10,9 +10,11 @@ import { fetchDayAttributes, type DayAttributes } from '../lib/dayFilters'
 import { CityControls } from './CityControls'
 import { Sidebar, type SheetState, type SidebarCategory } from './Sidebar'
 import { DayFilters } from './DayFilters'
-import { GranularityToggle } from './GranularityToggle'
-import { DateRangePicker } from './DateRangePicker'
+import { GranularityToggle, GRANULARITY_ORDER } from './GranularityToggle'
+import { DateRangePicker, type RangeMode } from './DateRangePicker'
 import { MultiTrendChart } from './MultiTrendChart'
+
+type SalesAgg = 'total' | 'average'
 
 type Discovery =
   | { status: 'loading' }
@@ -30,7 +32,9 @@ export function Dashboard() {
   const [discovery, setDiscovery] = useState<Discovery>({ status: 'loading' })
   const [includedCities, setIncludedCities] = useState<Set<string>>(new Set())
   const [overlap, setOverlap] = useState(true)
-  const [granularity, setGranularity] = useState<Granularity>('daily')
+  const [granularity, setGranularity] = useState<Granularity>('day')
+  const [rangeMode, setRangeMode] = useState<RangeMode>('month')
+  const [salesAgg, setSalesAgg] = useState<SalesAgg>('total')
   const [range, setRange] = useState<DateRange>(() => lastNDays(30))
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // City-category selections keyed by `${category}::${column}`; globals by `${sheet}::${column}`.
@@ -285,6 +289,18 @@ export function Dashboard() {
     [cityCatNames, includedCities, loadSheet],
   )
 
+  // Changing the range mode clamps the "show in chart" granularity so it can't
+  // be coarser than the window (e.g. Week range → only Days/Weeks selectable).
+  const changeRangeMode = useCallback((m: RangeMode) => {
+    setRangeMode(m)
+    const maxLevel = GRANULARITY_ORDER.indexOf(m)
+    setGranularity((g) =>
+      GRANULARITY_ORDER.indexOf(g) > maxLevel ? GRANULARITY_ORDER[maxLevel] : g,
+    )
+  }, [])
+
+  const maxLevel = GRANULARITY_ORDER.indexOf(rangeMode)
+
   const toggleCity = useCallback((city: string) => {
     setIncludedCities((prev) => {
       const next = new Set(prev)
@@ -371,11 +387,18 @@ export function Dashboard() {
             r.date <= range.end &&
             (!allowedDates || allowedDates.has(r.date.getTime())),
         )
-        return [{ spec, rows, meta: metricMeta(spec.column) }]
+        // The total/average radio only governs sales data (added later); every
+        // other metric always averages.
+        const isSales = false
+        const meta = {
+          ...metricMeta(spec.column),
+          agg: isSales && salesAgg === 'total' ? ('sum' as const) : ('avg' as const),
+        }
+        return [{ spec, rows, meta }]
       })
       return aggregateMerged(inputs, granularity)
     },
-    [sheetStates, range, allowedDates, granularity],
+    [sheetStates, range, allowedDates, granularity, salesAgg],
   )
 
   const chartGroups = useMemo<ChartGroup[]>(() => {
@@ -437,15 +460,50 @@ export function Dashboard() {
       <div className="flex flex-col gap-6 md:flex-row">
         {/* Chart area */}
         <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">Trends</h2>
-              <p className="text-xs text-slate-400">Actual values over the selected range.</p>
-            </div>
-            <GranularityToggle value={granularity} onChange={setGranularity} />
+          <div>
+            <h2 className="text-lg font-semibold">Trends</h2>
+            <p className="text-xs text-slate-400">Actual values over the selected range.</p>
           </div>
 
-          <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
+          <div className="flex flex-col gap-3">
+            <DateRangePicker
+              value={range}
+              onChange={setRange}
+              bounds={bounds}
+              mode={rangeMode}
+              onModeChange={changeRangeMode}
+            />
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <GranularityToggle
+                value={granularity}
+                onChange={setGranularity}
+                maxLevel={maxLevel}
+              />
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Values
+                </span>
+                <div className="inline-flex gap-3 text-sm">
+                  {(['total', 'average'] as const).map((v) => (
+                    <label
+                      key={v}
+                      className="flex cursor-pointer items-center gap-1.5"
+                      title="Applies to sales data (coming soon); all other data averages"
+                    >
+                      <input
+                        type="radio"
+                        name="salesAgg"
+                        checked={salesAgg === v}
+                        onChange={() => setSalesAgg(v)}
+                        className="accent-blue-600"
+                      />
+                      <span className="capitalize text-slate-600 dark:text-slate-300">{v}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Selected chips — color picker + label + remove */}
           {series.length > 0 && (

@@ -1,38 +1,51 @@
 import type { Granularity } from '../lib/data'
 
-const OPTIONS: Granularity[] = ['daily', 'weekly', 'monthly']
+// Ordered coarsening levels — index doubles as the level (day=0 … all=4).
+export const GRANULARITY_ORDER: Granularity[] = ['day', 'week', 'month', 'year', 'all']
+
+const LABELS: Record<Granularity, string> = {
+  day: 'Days',
+  week: 'Weeks',
+  month: 'Months',
+  year: 'Years',
+  all: 'All',
+}
 
 interface Props {
   value: Granularity
   onChange: (g: Granularity) => void
+  maxLevel: number // highest selectable level (aligns with the range mode)
 }
 
-export function GranularityToggle({ value, onChange }: Props) {
+export function GranularityToggle({ value, onChange, maxLevel }: Props) {
   return (
-    <div
-      role="group"
-      aria-label="Granularity"
-      className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800"
-    >
-      {OPTIONS.map((g) => {
-        const active = g === value
-        return (
-          <button
-            key={g}
-            type="button"
-            onClick={() => onChange(g)}
-            aria-pressed={active}
-            className={
-              'rounded-md px-3 py-1 text-sm font-medium capitalize transition-colors ' +
-              (active
-                ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
-                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100')
-            }
-          >
-            {g}
-          </button>
-        )
-      })}
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Show in chart</span>
+      <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
+        {GRANULARITY_ORDER.map((g, level) => {
+          const active = g === value
+          const disabled = level > maxLevel
+          return (
+            <button
+              key={g}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(g)}
+              aria-pressed={active}
+              className={
+                'rounded-md px-3 py-1 text-sm font-medium transition-colors ' +
+                (disabled
+                  ? 'cursor-not-allowed text-slate-300 dark:text-slate-600'
+                  : active
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100')
+              }
+            >
+              {LABELS[g]}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

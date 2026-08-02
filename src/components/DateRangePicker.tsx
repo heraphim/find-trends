@@ -15,9 +15,9 @@ import {
   type DateRange,
 } from '../lib/dateRange'
 
-type Mode = 'day' | 'week' | 'month' | 'year' | 'all'
+export type RangeMode = 'day' | 'week' | 'month' | 'year' | 'all'
 
-const MODES: { id: Mode; label: string }[] = [
+const MODES: { id: RangeMode; label: string }[] = [
   { id: 'day', label: 'Day' },
   { id: 'week', label: 'Week' },
   { id: 'month', label: 'Month' },
@@ -29,13 +29,14 @@ interface Props {
   value: DateRange
   onChange: (r: DateRange) => void
   bounds: { min: Date; max: Date }
+  mode: RangeMode
+  onModeChange: (m: RangeMode) => void
 }
 
 const controlClass =
   'rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 [color-scheme:light] dark:[color-scheme:dark]'
 
-export function DateRangePicker({ onChange, bounds }: Props) {
-  const [mode, setMode] = useState<Mode>('month')
+export function DateRangePicker({ onChange, bounds, mode, onModeChange }: Props) {
   const [daySel, setDaySel] = useState<Date>(() => yesterday())
   const [weekSel, setWeekSel] = useState('recent')
   const [monthSel, setMonthSel] = useState('recent')
@@ -51,8 +52,8 @@ export function DateRangePicker({ onChange, bounds }: Props) {
   })
   const apply = (r: DateRange) => onChange(clamp(r))
 
-  const selectMode = (m: Mode) => {
-    setMode(m)
+  const selectMode = (m: RangeMode) => {
+    onModeChange(m)
     if (m === 'day') apply({ start: daySel, end: daySel })
     else if (m === 'week') {
       setWeekSel('recent')
