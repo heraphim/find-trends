@@ -10,11 +10,8 @@
       (function () {
         try {
           var saved = localStorage.getItem('theme');
-          var dark =
-            saved === 'dark' ||
-            (!saved &&
-              window.matchMedia('(prefers-color-scheme: dark)').matches);
-          document.documentElement.classList.toggle('dark', dark);
+          // Default to dark unless the user explicitly chose light.
+          document.documentElement.classList.toggle('dark', saved !== 'light');
         } catch (e) {}
       })();
     </script>
