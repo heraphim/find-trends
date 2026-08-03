@@ -271,29 +271,6 @@ export function MultiTrendChart({
               strokeOpacity={0}
             />
           )}
-          {eventMarkers?.map((m) =>
-            m.startLabel === m.endLabel ? (
-              <ReferenceLine
-                key={`${m.startLabel}|${m.endLabel}`}
-                x={m.startLabel}
-                stroke={TIER_COLOR[m.tier]}
-                strokeDasharray="3 3"
-                strokeOpacity={0.7}
-                label={<MarkerLabel color={TIER_COLOR[m.tier]} names={m.names} />}
-              />
-            ) : (
-              <ReferenceArea
-                key={`${m.startLabel}|${m.endLabel}`}
-                x1={m.startLabel}
-                x2={m.endLabel}
-                fill={TIER_COLOR[m.tier]}
-                fillOpacity={0.12}
-                stroke={TIER_COLOR[m.tier]}
-                strokeOpacity={0.35}
-                label={<MarkerLabel color={TIER_COLOR[m.tier]} names={m.names} />}
-              />
-            ),
-          )}
           <XAxis
             dataKey="label"
             tick={{ fill: colors.axis, fontSize: 12 }}
@@ -364,6 +341,30 @@ export function MultiTrendChart({
               connectNulls
             />
           ))}
+          {/* Event markers last, so they draw ON TOP of the bars and lines. */}
+          {eventMarkers?.map((m) =>
+            m.startLabel === m.endLabel ? (
+              <ReferenceLine
+                key={`${m.startLabel}|${m.endLabel}`}
+                x={m.startLabel}
+                stroke={TIER_COLOR[m.tier]}
+                strokeDasharray="3 3"
+                strokeOpacity={0.8}
+                label={<MarkerLabel color={TIER_COLOR[m.tier]} names={m.names} />}
+              />
+            ) : (
+              <ReferenceArea
+                key={`${m.startLabel}|${m.endLabel}`}
+                x1={m.startLabel}
+                x2={m.endLabel}
+                fill={TIER_COLOR[m.tier]}
+                fillOpacity={0.12}
+                stroke={TIER_COLOR[m.tier]}
+                strokeOpacity={0.35}
+                label={<MarkerLabel color={TIER_COLOR[m.tier]} names={m.names} />}
+              />
+            ),
+          )}
         </ComposedChart>
       </ResponsiveContainer>
     </div>
