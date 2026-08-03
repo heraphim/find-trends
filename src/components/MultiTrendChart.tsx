@@ -3,6 +3,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -15,7 +16,8 @@ import type { ChartRow, SeriesSpec } from '../lib/data'
 import type { Tier } from '../lib/events'
 
 export interface EventMarker {
-  label: string // must match a bucket's x-axis label
+  startLabel: string // bucket label of the event's start (must match an x-axis label)
+  endLabel: string // bucket label of the event's end; === startLabel for single-bucket events
   tier: Tier
   names: string[]
 }
@@ -140,16 +142,29 @@ export function MultiTrendChart({
           }}
         >
           <CartesianGrid stroke={colors.grid} vertical={false} />
-          {eventMarkers?.map((m) => (
-            <ReferenceLine
-              key={m.label}
-              x={m.label}
-              stroke={TIER_COLOR[m.tier]}
-              strokeDasharray="3 3"
-              strokeOpacity={0.7}
-              label={<MarkerLabel color={TIER_COLOR[m.tier]} names={m.names} />}
-            />
-          ))}
+          {eventMarkers?.map((m) =>
+            m.startLabel === m.endLabel ? (
+              <ReferenceLine
+                key={`${m.startLabel}|${m.endLabel}`}
+                x={m.startLabel}
+                stroke={TIER_COLOR[m.tier]}
+                strokeDasharray="3 3"
+                strokeOpacity={0.7}
+                label={<MarkerLabel color={TIER_COLOR[m.tier]} names={m.names} />}
+              />
+            ) : (
+              <ReferenceArea
+                key={`${m.startLabel}|${m.endLabel}`}
+                x1={m.startLabel}
+                x2={m.endLabel}
+                fill={TIER_COLOR[m.tier]}
+                fillOpacity={0.12}
+                stroke={TIER_COLOR[m.tier]}
+                strokeOpacity={0.35}
+                label={<MarkerLabel color={TIER_COLOR[m.tier]} names={m.names} />}
+              />
+            ),
+          )}
           <XAxis
             dataKey="label"
             tick={{ fill: colors.axis, fontSize: 12 }}
