@@ -1,5 +1,6 @@
 import { BuildInfo } from './components/BuildInfo'
 import { Dashboard } from './components/Dashboard'
+import { ShareControls } from './components/ShareControls'
 import { ThemeToggle } from './components/ThemeToggle'
 
 function App() {
@@ -13,7 +14,10 @@ function App() {
               Charts from Google Sheets, with CSV comparison.
             </p>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-3">
+            <ShareControls />
+            <ThemeToggle />
+          </div>
         </header>
 
         <main className="flex-1">

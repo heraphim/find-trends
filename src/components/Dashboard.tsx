@@ -29,7 +29,13 @@ import {
   type EventSource,
 } from '../lib/eventsData'
 import type { Tier } from '../lib/events'
-import { usePersistedState, setSerde, setMapSerde } from '../hooks/usePersistedState'
+import {
+  usePersistedState,
+  setSerde,
+  setMapSerde,
+  dateRangeSerde,
+  dateRangeArraySerde,
+} from '../hooks/usePersistedState'
 import {
   SALES_METRICS,
   buildSalesSeries,
@@ -250,8 +256,9 @@ export function Dashboard() {
   const [granularity, setGranularity] = usePersistedState<Granularity>('ft.gran', 'day')
   const [rangeMode, setRangeMode] = usePersistedState<RangeMode>('ft.rangeMode', 'month')
   const [salesAgg, setSalesAgg] = usePersistedState<SalesAgg>('ft.salesAgg', 'total')
-  const [range, setRange] = useState<DateRange>(() => lastNDays(30)) // base range from the picker
-  const [zoomStack, setZoomStack] = useState<DateRange[]>([]) // drag-zoom overrides on top of the base
+  // Persisted so a shared/imported view reproduces the exact time window.
+  const [range, setRange] = usePersistedState<DateRange>('ft.range', () => lastNDays(30), dateRangeSerde) // base range from the picker
+  const [zoomStack, setZoomStack] = usePersistedState<DateRange[]>('ft.zoom', [], dateRangeArraySerde) // drag-zoom overrides on top of the base
   const activeRange = zoomStack.length ? zoomStack[zoomStack.length - 1] : range
   const [eventSources, setEventSources] = usePersistedState('ft.eventSources', new Set<string>(), setSerde)
   const [eventData, setEventData] = useState<Record<string, CuratedEvent[]>>({})
