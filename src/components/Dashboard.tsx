@@ -321,6 +321,33 @@ function sameSnap(a: TimeSnap, b: TimeSnap): boolean {
 }
 const DEFAULT_SNAP = (): TimeSnap => ({ range: lastNDays(30), gran: 'day' })
 
+// Snap a range to REAL units of the granularity: week → Monday..Sunday, month →
+// 1st..last day, year → Jan 1..Dec 31 (day/all pass through — days are already
+// whole). The start rounds to the NEAREST unit start, the end to the NEAREST
+// unit end (ties expand outward); a collapsed result falls back to the single
+// unit containing the snapped start. Applied inside commitTime, so EVERY range/
+// unit change (picker, zoom, pan, next/prev, drill) lands on unit boundaries.
+function snapRangeToUnit(r: DateRange, g: Granularity): DateRange {
+  if (g === 'all' || g === 'day') return r
+  // Start → nearest bucket start (this bucket's, or the next one's).
+  const sB = bucketStart(r.start, g)
+  const sNext = stepBucket(sB.getTime(), g, 1)
+  let start = sB
+  if (sNext !== null && r.start.getTime() - sB.getTime() > sNext - r.start.getTime()) {
+    start = new Date(sNext)
+  }
+  // End → nearest bucket end (this bucket's, or the previous one's — the day
+  // before this bucket starts).
+  const eB = bucketStart(r.end, g)
+  const eEnd = bucketToRange(eB.getTime(), g)?.end ?? r.end
+  const prevEnd = new Date(eB.getFullYear(), eB.getMonth(), eB.getDate() - 1)
+  let end = eEnd
+  if (r.end.getTime() - prevEnd.getTime() < eEnd.getTime() - r.end.getTime()) end = prevEnd
+  // Both rounded inward past each other → keep exactly one whole unit.
+  if (end.getTime() < start.getTime()) end = bucketToRange(start.getTime(), g)?.end ?? start
+  return { start, end }
+}
+
 // Wheel/pinch events closer together than this collapse into one history entry.
 const GESTURE_COALESCE_MS = 500
 function startOfDay(t: number): Date {
@@ -768,7 +795,10 @@ export function Dashboard() {
       setTimeHistory((h) => {
         const cur = h[h.length - 1] ?? DEFAULT_SNAP()
         const raw = next(cur)
-        const snap: TimeSnap = { range: raw.range, gran: clampGran(raw.gran, raw.range) }
+        // Clamp the unit to the raw span, then snap the range to REAL units of
+        // that granularity (Mon..Sun weeks, 1st..last months, Jan 1..Dec 31 years).
+        const gran = clampGran(raw.gran, raw.range)
+        const snap: TimeSnap = { range: snapRangeToUnit(raw.range, gran), gran }
         // `replace` swaps the top in place instead of pushing — used by continuous
         // gestures (wheel/pinch/drag) so one gesture is a single history entry
         // rather than dozens. The base for the pushed-then-replaced entry is the
@@ -1212,11 +1242,15 @@ export function Dashboard() {
     () => commitTime((cur) => zoomOutSnap(cur, 2, 0.5, zoomBounds)),
     [commitTime, zoomBounds],
   )
-  // Zoom-in bottoms out only at a single day at day units; zoom-out at the data extent.
+  // Zoom-in bottoms out only at a single day at day units; zoom-out at the data
+  // extent. Compared at BUCKET level: a snapped range can overhang the data by a
+  // partial unit (e.g. month end past the last data day), which shouldn't keep
+  // the button enabled as a no-op.
   const canZoomIn = !(granularity === 'day' && spansOneBucket(activeRange, 'day'))
+  const cmpGran: Granularity = granularity === 'all' ? 'day' : granularity
   const canZoomOut =
-    activeRange.start.getTime() > startOfDay(zoomBounds.min.getTime()).getTime() ||
-    activeRange.end.getTime() < startOfDay(zoomBounds.max.getTime()).getTime()
+    bucketStart(activeRange.start, cmpGran).getTime() > bucketStart(zoomBounds.min, cmpGran).getTime() ||
+    bucketStart(activeRange.end, cmpGran).getTime() < bucketStart(zoomBounds.max, cmpGran).getTime()
 
   // Wheel / pinch zoom, anchored under the pointer. Rapid events within
   // GESTURE_COALESCE_MS collapse into one history entry (replace the top) so a
