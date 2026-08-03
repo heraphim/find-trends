@@ -45,16 +45,24 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           GUIDANCE: ${{ github.event.inputs.guidance }}
         run: |
+          set +e   # don't let bash -e abort before we surface diagnostics
+          echo "claude version: $(claude --version 2>&1)"
+          echo "token present: $([ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && echo yes || echo NO), length: ${#CLAUDE_CODE_OAUTH_TOKEN}"
           PROMPT="$(cat .github/prompts/generate-events.md)"
           if [ -n "$GUIDANCE" ]; then
             PROMPT="$PROMPT"$'\n\n## Extra guidance for this run\n'"$GUIDANCE"
           fi
           # --output-format json emits one result object (usage + cost) to stdout;
-          # file edits still happen during the run.
+          # file edits still happen during the run. Keep stderr in the log.
           claude -p "$PROMPT" \
             --allowedTools "Read,Grep,Glob,Edit,Write" \
             --max-turns 40 \
-            --output-format json > claude-result.json
+            --output-format json > claude-result.json 2> claude-stderr.txt
+          code=$?
+          echo "===== claude exit code: $code ====="
+          echo "----- stderr -----"; cat claude-stderr.txt 2>/dev/null || echo "(none)"
+          echo "----- stdout / claude-result.json -----"; cat claude-result.json 2>/dev/null || echo "(empty)"
+          exit $code
 
       - name: Build PR body with token/cost report
         if: always()
