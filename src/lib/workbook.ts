@@ -1,9 +1,11 @@
 // Ordered list of tab names, from the static manifest in public/data/.
 // (Cell data is loaded per-tab as CSV; see sheet.ts.)
+import { withVersion } from './version'
+
 const MANIFEST_URL = `${import.meta.env.BASE_URL}data/tabs.json`
 
 export async function discoverTabNames(): Promise<string[]> {
-  const res = await fetch(MANIFEST_URL)
+  const res = await fetch(withVersion(MANIFEST_URL))
   if (!res.ok) throw new Error(`Could not read the data manifest (HTTP ${res.status}).`)
   const names = (await res.json()) as unknown
   if (!Array.isArray(names) || names.some((n) => typeof n !== 'string')) {

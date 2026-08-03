@@ -1,5 +1,6 @@
 import Papa from 'papaparse'
 import type { Tier } from './events'
+import { withVersion } from './version'
 
 // Curated events live as static CSVs next to the trend data, in the rich schema:
 // Start Date,End Date,Event Name,Event Type,Impact Category,Positive or Negative,Importance (1-100),Description
@@ -60,7 +61,7 @@ const eventUrl = (file: string) => `${import.meta.env.BASE_URL}data/events/${fil
 
 // Fetch + parse one event CSV into typed rows (same fetch/Papa pattern as lib/sheet.ts).
 export async function fetchEventFile(spec: FileSpec): Promise<CuratedEvent[]> {
-  const res = await fetch(eventUrl(spec.file))
+  const res = await fetch(withVersion(eventUrl(spec.file)))
   if (!res.ok) throw new Error(`Could not read events "${spec.file}" (HTTP ${res.status}).`)
   const text = await res.text()
   const parsed = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true })

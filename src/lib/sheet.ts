@@ -1,5 +1,6 @@
 import Papa from 'papaparse'
 import { classifyColumns, parseSheetDate, type DataRow, type SheetData } from './data'
+import { withVersion } from './version'
 
 // The column holding the row date, in DD-MM-YY form.
 const DATE_COLUMN = 'date'
@@ -15,7 +16,7 @@ export function csvUrlForSheet(sheetName: string): string {
 
 // Fetch and parse one tab into typed rows + classified columns.
 export async function fetchSheetData(sheetName: string): Promise<SheetData> {
-  const res = await fetch(csvUrlForSheet(sheetName))
+  const res = await fetch(withVersion(csvUrlForSheet(sheetName)))
   if (!res.ok) {
     throw new Error(`Could not read "${sheetName}" (HTTP ${res.status}).`)
   }

@@ -1,6 +1,7 @@
 import Papa from 'papaparse'
 import { csvUrlForSheet } from './sheet'
 import { parseSheetDate } from './data'
+import { withVersion } from './version'
 
 export interface FilterDimension {
   column: string // e.g. 'season', 'is_weekend', 'is_weekday'
@@ -41,7 +42,7 @@ function orderValues(values: string[]): string[] {
 // Load the days sheet: identify non-numeric, low-cardinality columns as filter
 // dimensions, and map every date to its attribute values.
 export async function fetchDayAttributes(sheetName: string): Promise<DayAttributes> {
-  const res = await fetch(csvUrlForSheet(sheetName))
+  const res = await fetch(withVersion(csvUrlForSheet(sheetName)))
   if (!res.ok) throw new Error(`Could not read "${sheetName}" (HTTP ${res.status}).`)
   const text = await res.text()
   const parsed = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true })

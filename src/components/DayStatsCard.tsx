@@ -1,4 +1,6 @@
 import type { SalesStats } from '../lib/sales'
+import { useCollapsed } from '../hooks/useCollapsed'
+import { CollapseChevron } from './CollapseChevron'
 
 // Sales + weather glyph inputs for one city over the selected period (one column).
 export interface CityDayStats {
@@ -96,10 +98,20 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 export function DayStatsCard({ title, columns, onClear, onPrev, onNext }: Props) {
+  const [collapsed, toggle] = useCollapsed('day-stats')
+
+  // Combined totals across every city column (sales-bearing columns only).
+  const totals = columns.reduce(
+    (a, c) => (c.stats ? { total: a.total + c.stats.total, count: a.count + c.stats.count } : a),
+    { total: 0, count: 0 },
+  )
+  const hasSales = columns.some((c) => c.stats)
+
   return (
     <section className="group rounded-2xl border border-blue-200 bg-white p-5 shadow-sm dark:border-blue-500/30 dark:bg-slate-900">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 className="flex items-center gap-2 text-lg font-semibold">
+          <CollapseChevron collapsed={collapsed} onClick={toggle} label="selected period" />
           Selected period
           {onPrev && (
             <button
@@ -136,7 +148,25 @@ export function DayStatsCard({ title, columns, onClear, onPrev, onNext }: Props)
         )}
       </div>
 
-      {columns.length === 0 ? (
+      {collapsed ? (
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          {hasSales ? (
+            <>
+              <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                {money(totals.total)}
+              </span>{' '}
+              total ·{' '}
+              <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                {totals.count.toLocaleString()}
+              </span>{' '}
+              purchase{totals.count === 1 ? '' : 's'}
+              {columns.length > 1 ? ` · ${columns.length} cities` : ''}
+            </>
+          ) : (
+            'Weather only for this period.'
+          )}
+        </p>
+      ) : columns.length === 0 ? (
         <p className="text-sm text-slate-400">Nothing to show for this period.</p>
       ) : (
         <div className="flex flex-wrap gap-3">

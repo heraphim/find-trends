@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { SidebarCategory } from './Sidebar'
 import { columnMeta } from '../lib/metricMeta'
 import { SOURCE_LABEL, type EventSource } from '../lib/eventsData'
+import { useCollapsed } from '../hooks/useCollapsed'
+import { CollapseChevron } from './CollapseChevron'
 
 const EVENTS_KEY = '__events__'
 const EVENT_SOURCES: EventSource[] = ['local', 'romania', 'global']
@@ -155,7 +157,11 @@ export function CategoryBar({
   onToggleEventSource,
 }: Props) {
   const [openKey, setOpenKey] = useState<string | null>(null)
+  const [collapsed, toggleCollapsed] = useCollapsed('categories')
   const ref = useRef<HTMLDivElement>(null)
+
+  const totalSelected =
+    categories.reduce((n, cat) => n + selectedCount(cat), 0) + eventSources.size
 
   // Close on outside click or Escape.
   useEffect(() => {
@@ -184,9 +190,16 @@ export function CategoryBar({
       ref={ref}
       className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
     >
+      <CollapseChevron collapsed={collapsed} onClick={toggleCollapsed} label="categories" />
       <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Categories</span>
 
-      {categories.map((cat) => (
+      {collapsed && (
+        <span className="text-xs text-slate-400">
+          {totalSelected === 0 ? 'nothing selected' : `${totalSelected} selected`}
+        </span>
+      )}
+
+      {!collapsed && categories.map((cat) => (
         <BarItem
           key={cat.key}
           label={cat.title}
@@ -200,6 +213,7 @@ export function CategoryBar({
       ))}
 
       {/* Curated events — sources, not metrics. */}
+      {!collapsed && (
       <BarItem
         label="Events"
         count={eventSources.size}
@@ -226,6 +240,7 @@ export function CategoryBar({
           ))}
         </div>
       </BarItem>
+      )}
     </div>
   )
 }

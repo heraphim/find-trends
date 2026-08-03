@@ -2,6 +2,8 @@ import type { DateRange } from '../lib/dateRange'
 import { SOURCE_LABEL, eventTier, type CuratedEvent } from '../lib/eventsData'
 import type { Tier } from '../lib/events'
 import { capitalize } from '../lib/labels'
+import { useCollapsed } from '../hooks/useCollapsed'
+import { CollapseChevron } from './CollapseChevron'
 
 const TIER_STYLE: Record<Tier, string> = {
   major: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
@@ -33,6 +35,7 @@ interface Props {
 const CAP = 200
 
 export function CuratedEventsPanel({ events, range, focused, onClear, active }: Props) {
+  const [collapsed, toggle] = useCollapsed('curated-events')
   const shown = events.slice(0, CAP)
   const extra = events.length - shown.length
 
@@ -40,7 +43,15 @@ export function CuratedEventsPanel({ events, range, focused, onClear, active }: 
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 className="flex items-center gap-2 text-lg font-semibold">
+          <CollapseChevron collapsed={collapsed} onClick={toggle} label="local &amp; regional events" />
           Local &amp; regional events
+          {collapsed && (
+            <span className="text-xs font-medium text-slate-400">
+              {!active
+                ? 'inactive'
+                : `${events.length.toLocaleString()} event${events.length === 1 ? '' : 's'}`}
+            </span>
+          )}
           {focused && (
             <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
               selected point
@@ -61,7 +72,7 @@ export function CuratedEventsPanel({ events, range, focused, onClear, active }: 
         </span>
       </div>
 
-      {!active ? (
+      {collapsed ? null : !active ? (
         <div className="py-6 text-center text-sm text-slate-400">
           Pick Local / Romania / Global from the <span className="font-medium">Events</span> category to show your events.
         </div>
@@ -100,7 +111,7 @@ export function CuratedEventsPanel({ events, range, focused, onClear, active }: 
           })}
         </ul>
       )}
-      {extra > 0 && (
+      {!collapsed && extra > 0 && (
         <p className="mt-3 text-xs text-slate-400">+ {extra.toLocaleString()} more — narrow the range to see them.</p>
       )}
     </section>

@@ -37,6 +37,8 @@ import {
   dateRangeSerde,
   dateRangeArraySerde,
 } from '../hooks/usePersistedState'
+import { useCollapsed } from '../hooks/useCollapsed'
+import { CollapseChevron } from './CollapseChevron'
 import {
   SALES_METRICS,
   buildSalesSeries,
@@ -285,6 +287,8 @@ export function Dashboard() {
   const [focusedT, setFocusedT] = useState<number | null>(null)
   // Event-legend hover → glow the matching marker on the chart.
   const [hoveredMarker, setHoveredMarker] = useState<string | null>(null)
+  // Collapse the whole Trends chart section (controls + chart).
+  const [chartCollapsed, toggleChart] = useCollapsed('trends')
 
   const inFlight = useRef<Set<string>>(new Set())
   const eventInFlight = useRef<Set<string>>(new Set())
@@ -972,14 +976,25 @@ export function Dashboard() {
       <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold">Trends</h2>
-            <p className="text-xs text-slate-400">
-              {zoomStack.length > 0
-                ? 'Zoomed in — drag to zoom further, or step back.'
-                : 'Actual values over the selected range. Drag across the chart to zoom in.'}
-            </p>
+            <h2 className="flex items-center gap-2 text-lg font-semibold">
+              <CollapseChevron collapsed={chartCollapsed} onClick={toggleChart} label="trends chart" />
+              Trends
+              {chartCollapsed && (
+                <span className="text-xs font-medium text-slate-400">
+                  {series.length + salesSeriesIds.length} series
+                  {markerEvents.length > 0 ? ` · ${markerEvents.length} events` : ''}
+                </span>
+              )}
+            </h2>
+            {!chartCollapsed && (
+              <p className="text-xs text-slate-400">
+                {zoomStack.length > 0
+                  ? 'Zoomed in — drag to zoom further, or step back.'
+                  : 'Actual values over the selected range. Drag across the chart to zoom in.'}
+              </p>
+            )}
           </div>
-          {zoomStack.length > 0 && (
+          {!chartCollapsed && zoomStack.length > 0 && (
             <button
               type="button"
               onClick={zoomBack}
@@ -990,6 +1005,8 @@ export function Dashboard() {
           )}
         </div>
 
+        {!chartCollapsed && (
+        <>
           <div className="flex flex-col gap-3">
             <DateRangePicker
               value={range}
@@ -1148,6 +1165,8 @@ export function Dashboard() {
               })}
             </div>
           )}
+        </>
+        )}
       </section>
 
       {/* Selected-day stats — per-city weather + sales for a clicked point */}

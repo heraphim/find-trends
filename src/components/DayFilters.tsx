@@ -1,5 +1,7 @@
 import { prettyCategory } from '../lib/labels'
 import type { FilterDimension } from '../lib/dayFilters'
+import { useCollapsed } from '../hooks/useCollapsed'
+import { CollapseChevron } from './CollapseChevron'
 
 interface Props {
   dimensions: FilterDimension[]
@@ -19,11 +21,22 @@ function valueLabel(v: string): string {
 }
 
 export function DayFilters({ dimensions, state, onToggle }: Props) {
+  const [collapsed, toggle] = useCollapsed('day-filters')
   if (dimensions.length === 0) return null
+  // Dimensions with at least one value unchecked (i.e. actively filtering).
+  const activeCount = dimensions.filter(
+    (dim) => dim.values.some((v) => !(state[dim.column]?.has(v) ?? true)),
+  ).length
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+      <CollapseChevron collapsed={collapsed} onClick={toggle} label="day filters" />
       <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Day filters</span>
-      {dimensions.map((dim) => (
+      {collapsed && (
+        <span className="text-xs text-slate-400">
+          {activeCount === 0 ? 'all days' : `${activeCount} active`}
+        </span>
+      )}
+      {!collapsed && dimensions.map((dim) => (
         <div key={dim.column} className="flex items-center gap-2">
           <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
             {groupLabel(dim.column)}

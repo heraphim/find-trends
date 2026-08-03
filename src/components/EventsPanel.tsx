@@ -2,6 +2,15 @@ import { useEffect, useState } from 'react'
 import { fetchEventsForRange, type RangeEvents, type Tier } from '../lib/events'
 import type { DateRange } from '../lib/dateRange'
 import { usePersistedState } from '../hooks/usePersistedState'
+import { useCollapsed } from '../hooks/useCollapsed'
+import { CollapseChevron } from './CollapseChevron'
+
+// Total events in a loaded range payload (daily digest items, or major events).
+function eventCount(data: RangeEvents): number {
+  return data.kind === 'daily'
+    ? data.blocks.reduce((n, b) => n + b.items.length, 0)
+    : data.events.length
+}
 
 const TIER_STYLE: Record<Tier, string> = {
   major: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
@@ -46,6 +55,7 @@ const MAJOR_CAP = 150
 export function EventsPanel({ range, focused, onClear }: Props) {
   const [state, setState] = useState<State>({ status: 'loading' })
   const [importantOnly, setImportantOnly] = usePersistedState('ft.importantOnly', true)
+  const [collapsed, toggle] = useCollapsed('global-events')
 
   useEffect(() => {
     let cancelled = false
@@ -65,7 +75,17 @@ export function EventsPanel({ range, focused, onClear }: Props) {
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 className="flex items-center gap-2 text-lg font-semibold">
+          <CollapseChevron collapsed={collapsed} onClick={toggle} label="global events" />
           Global events
+          {collapsed && (
+            <span className="text-xs font-medium text-slate-400">
+              {state.status === 'loading'
+                ? '…'
+                : state.status === 'error'
+                  ? 'failed to load'
+                  : `${eventCount(state.data).toLocaleString()} event${eventCount(state.data) === 1 ? '' : 's'}`}
+            </span>
+          )}
           {focused && (
             <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
               selected point
@@ -85,28 +105,32 @@ export function EventsPanel({ range, focused, onClear }: Props) {
           )}
         </span>
       </div>
-      <div className="-mt-2 mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-slate-400">
-          {focused ? 'Ranked by estimated importance.' : 'Tip: click a point in the chart to see that day/period.'}
-        </p>
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-          <input
-            type="checkbox"
-            checked={importantOnly}
-            onChange={() => setImportantOnly((v) => !v)}
-            className="h-3.5 w-3.5 accent-blue-600"
-          />
-          Important only
-        </label>
-      </div>
+      {!collapsed && (
+        <>
+          <div className="-mt-2 mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-slate-400">
+              {focused ? 'Ranked by estimated importance.' : 'Tip: click a point in the chart to see that day/period.'}
+            </p>
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={importantOnly}
+                onChange={() => setImportantOnly((v) => !v)}
+                className="h-3.5 w-3.5 accent-blue-600"
+              />
+              Important only
+            </label>
+          </div>
 
-      {state.status === 'loading' && (
-        <div className="py-6 text-center text-sm text-slate-400">Loading events…</div>
+          {state.status === 'loading' && (
+            <div className="py-6 text-center text-sm text-slate-400">Loading events…</div>
+          )}
+          {state.status === 'error' && (
+            <div className="py-6 text-center text-sm text-red-500">{state.message}</div>
+          )}
+          {state.status === 'ready' && <EventsBody data={state.data} importantOnly={importantOnly} />}
+        </>
       )}
-      {state.status === 'error' && (
-        <div className="py-6 text-center text-sm text-red-500">{state.message}</div>
-      )}
-      {state.status === 'ready' && <EventsBody data={state.data} importantOnly={importantOnly} />}
     </section>
   )
 }

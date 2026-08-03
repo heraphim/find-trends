@@ -7,6 +7,8 @@ import {
   salesSelKey,
   type SalesDataset,
 } from '../lib/sales'
+import { useCollapsed } from '../hooks/useCollapsed'
+import { CollapseChevron } from './CollapseChevron'
 
 interface Props {
   datasets: SalesDataset[]
@@ -36,6 +38,7 @@ export function SalesPanel({ datasets, selections, includedCities, onUpload, onT
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [collapsed, toggle] = useCollapsed('sales')
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -54,35 +57,46 @@ export function SalesPanel({ datasets, selections, includedCities, onUpload, onT
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <CollapseChevron collapsed={collapsed} onClick={toggle} label="Sales" />
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Sales</span>
 
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".xls,.xlsx,.xlsm,.csv"
-          multiple
-          className="hidden"
-          onChange={(e) => void handleFiles(e.target.files)}
-        />
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-60 dark:border-blue-500/60 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/20"
-        >
-          {busy ? 'Reading…' : '↑ Upload sales'}
-        </button>
-
-        {datasets.length === 0 && !error && (
+        {collapsed ? (
           <span className="text-xs text-slate-400">
-            Upload your shop's .xls — date in column G, amount in column I (from row 4). Name it
-            “City - …” to tie it to that city's weather.
+            {datasets.length === 0
+              ? 'No datasets'
+              : `${datasets.length} dataset${datasets.length === 1 ? '' : 's'}`}
           </span>
+        ) : (
+          <>
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".xls,.xlsx,.xlsm,.csv"
+              multiple
+              className="hidden"
+              onChange={(e) => void handleFiles(e.target.files)}
+            />
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-60 dark:border-blue-500/60 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/20"
+            >
+              {busy ? 'Reading…' : '↑ Upload sales'}
+            </button>
+
+            {datasets.length === 0 && !error && (
+              <span className="text-xs text-slate-400">
+                Upload your shop's .xls — date in column G, amount in column I (from row 4). Name it
+                “City - …” to tie it to that city's weather.
+              </span>
+            )}
+            {error && <span className="text-xs text-red-500">{error}</span>}
+          </>
         )}
-        {error && <span className="text-xs text-red-500">{error}</span>}
       </div>
 
-      {datasets.length > 0 && (
+      {!collapsed && datasets.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {datasets.map((ds) => (
             <div

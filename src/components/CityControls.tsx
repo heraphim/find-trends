@@ -1,4 +1,6 @@
 import { capitalize } from '../lib/labels'
+import { useCollapsed } from '../hooks/useCollapsed'
+import { CollapseChevron } from './CollapseChevron'
 
 interface Props {
   cities: string[]
@@ -9,10 +11,19 @@ interface Props {
 }
 
 export function CityControls({ cities, included, overlap, onToggleCity, onToggleOverlap }: Props) {
+  const [collapsed, toggle] = useCollapsed('cities')
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+      <CollapseChevron collapsed={collapsed} onClick={toggle} label="cities" />
       <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Cities</span>
 
+      {collapsed && (
+        <span className="text-xs text-slate-400">
+          {included.size}/{cities.length} selected · overlap {overlap ? 'on' : 'off'}
+        </span>
+      )}
+
+      {!collapsed && (
       <div className="flex flex-wrap gap-1.5">
         {cities.map((c) => {
           const on = included.has(c)
@@ -37,19 +48,22 @@ export function CityControls({ cities, included, overlap, onToggleCity, onToggle
           )
         })}
       </div>
+      )}
 
-      <label
-        className="ml-auto flex cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-300"
-        title="On: cities share one chart. Off: one chart per city, stacked."
-      >
-        <input
-          type="checkbox"
-          checked={overlap}
-          onChange={onToggleOverlap}
-          className="h-4 w-4 accent-blue-600"
-        />
-        Overlap
-      </label>
+      {!collapsed && (
+        <label
+          className="ml-auto flex cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-300"
+          title="On: cities share one chart. Off: one chart per city, stacked."
+        >
+          <input
+            type="checkbox"
+            checked={overlap}
+            onChange={onToggleOverlap}
+            className="h-4 w-4 accent-blue-600"
+          />
+          Overlap
+        </label>
+      )}
     </div>
   )
 }
