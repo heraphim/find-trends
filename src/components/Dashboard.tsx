@@ -310,7 +310,6 @@ function sameSnap(a: TimeSnap, b: TimeSnap): boolean {
 }
 const DEFAULT_SNAP = (): TimeSnap => ({ range: lastNDays(30), gran: 'day' })
 
-const DAY_MS = 86_400_000
 // Wheel/pinch events closer together than this collapse into one history entry.
 const GESTURE_COALESCE_MS = 500
 function startOfDay(t: number): Date {
@@ -362,6 +361,66 @@ function panRange(base: DateRange, fraction: number, bounds: { min: Date; max: D
   }
   if (s < lo) s = lo
   return { start: startOfDay(s), end: startOfDay(e) }
+}
+
+// The next finer time unit (day ← week ← month ← year ← all), or null at the floor.
+function finerGran(g: Granularity): Granularity | null {
+  const i = GRANULARITY_ORDER.indexOf(g)
+  return i > 0 ? GRANULARITY_ORDER[i - 1] : null
+}
+// Does the window cover just a single bucket at this granularity? ("one unit on
+// the screen" — the point at which zoom-in switches to a finer unit instead.)
+function spansOneBucket(r: DateRange, g: Granularity): boolean {
+  if (g === 'all') return true
+  return bucketStart(r.start, g).getTime() === bucketStart(r.end, g).getTime()
+}
+// Clamp a range to the zoom bounds (whole days).
+function clampRange(r: DateRange, zb: { min: Date; max: Date }): DateRange {
+  const lo = startOfDay(zb.min.getTime())
+  const hi = startOfDay(zb.max.getTime())
+  const s = r.start.getTime() < lo.getTime() ? lo : r.start
+  const e = r.end.getTime() > hi.getTime() ? hi : r.end
+  return e.getTime() < s.getTime() ? { start: s, end: s } : { start: s, end: e }
+}
+// Zoom-in step: shrink the window about `anchor` until only ONE unit fills the
+// screen — snapping to that unit's full span so it reads cleanly — then the next
+// zoom-in switches to the finer unit (day ← week ← month ← year ← all) instead of
+// shrinking further. At the floor (one day at day units) it's a no-op.
+function zoomInSnap(
+  cur: TimeSnap,
+  factor: number,
+  anchor: number,
+  zb: { min: Date; max: Date },
+): TimeSnap {
+  if (spansOneBucket(cur.range, cur.gran)) {
+    const finer = finerGran(cur.gran)
+    return finer ? { range: cur.range, gran: finer } : cur
+  }
+  const shrunk = zoomRange(cur.range, factor, zb, anchor)
+  if (cur.gran !== 'all') {
+    const shrunkDays = Math.round((shrunk.end.getTime() - shrunk.start.getTime()) / 86_400_000) + 1
+    const minDays = LEVEL_MIN_DAYS[GRANULARITY_ORDER.indexOf(cur.gran)]
+    // Landed inside a single unit — or shrank too small to hold a full one (a
+    // window straddling a unit boundary can dip under it without ever spanning
+    // exactly one bucket) → snap to the whole unit at the anchor point, so the
+    // "one unit on screen" state is always reached before drilling finer.
+    if (spansOneBucket(shrunk, cur.gran) || shrunkDays < minDays) {
+      const anchorT = cur.range.start.getTime() + anchor * (cur.range.end.getTime() - cur.range.start.getTime())
+      const full = bucketToRange(bucketStart(new Date(anchorT), cur.gran).getTime(), cur.gran)
+      if (full) return { range: clampRange(full, zb), gran: cur.gran }
+    }
+  }
+  return { range: shrunk, gran: cur.gran }
+}
+// Zoom-out step: grow the window about `anchor` (clamped to the zoom bounds),
+// keeping the unit.
+function zoomOutSnap(
+  cur: TimeSnap,
+  factor: number,
+  anchor: number,
+  zb: { min: Date; max: Date },
+): TimeSnap {
+  return { range: zoomRange(cur.range, factor, zb, anchor), gran: cur.gran }
 }
 
 export function Dashboard() {
@@ -750,55 +809,8 @@ export function Dashboard() {
     [commitTime, granularity],
   )
 
-  // Zoom in/out buttons: halve / double the window around its center (a range
-  // change, so it commits to the history and Back undoes it).
-  const zoomIn = useCallback(
-    () => commitTime((cur) => ({ range: zoomRange(cur.range, 0.5, bounds), gran: cur.gran })),
-    [commitTime, bounds],
-  )
-  const zoomOut = useCallback(
-    () => commitTime((cur) => ({ range: zoomRange(cur.range, 2, bounds), gran: cur.gran })),
-    [commitTime, bounds],
-  )
-  const spanDays = Math.round((activeRange.end.getTime() - activeRange.start.getTime()) / DAY_MS) + 1
-  const canZoomIn = spanDays > 1
-  const canZoomOut =
-    activeRange.start.getTime() > startOfDay(bounds.min.getTime()).getTime() ||
-    activeRange.end.getTime() < startOfDay(bounds.max.getTime()).getTime()
-
-  // Wheel / pinch zoom, anchored under the pointer. Rapid events within
-  // GESTURE_COALESCE_MS collapse into one history entry (replace the top) so a
-  // scroll/pinch burst is a single Back step.
-  const lastZoomTs = useRef(0)
-  const zoomGesture = useCallback(
-    (factor: number, anchorFraction: number) => {
-      const now = Date.now()
-      const replace = now - lastZoomTs.current < GESTURE_COALESCE_MS
-      lastZoomTs.current = now
-      commitTime((cur) => ({ range: zoomRange(cur.range, factor, bounds, anchorFraction), gran: cur.gran }), null, {
-        replace,
-      })
-    },
-    [commitTime, bounds],
-  )
-
-  // Middle-button drag → horizontal pan. `fraction` is cumulative drag distance
-  // (as a share of chart width) since the gesture began; applied to the base range
-  // captured on the first move, so the whole drag is one history entry.
-  const panBaseRef = useRef<DateRange | null>(null)
-  const panGesture = useCallback(
-    (fraction: number, phase: 'move' | 'end') => {
-      if (phase === 'end') {
-        panBaseRef.current = null
-        return
-      }
-      const first = panBaseRef.current === null
-      const base = panBaseRef.current ?? activeRange
-      if (first) panBaseRef.current = base
-      commitTime((cur) => ({ range: panRange(base, fraction, bounds), gran: cur.gran }), null, { replace: !first })
-    },
-    [commitTime, bounds, activeRange],
-  )
+  // (Zoom in/out + gesture callbacks are defined below, after dataExtent, so
+  //  their bounds can follow the sales data — see zoomBounds.)
 
   const toggleCity = useCallback((city: string) => {
     setIncludedCities((prev) => {
@@ -1141,6 +1153,73 @@ export function Dashboard() {
     return maxT >= minT ? { minT, maxT } : null
   }, [checkedDatasets, datasetVisible, series, sheetStates])
 
+  // Zoom/pan bounds follow the data being browsed — sales first, else the shown
+  // series, else any loaded sheet (dataExtent's priority) — so zooming out or
+  // panning can't run past the sales data. Falls back to the day-sheet bounds
+  // while nothing is loaded yet.
+  const zoomBounds = useMemo(
+    () => (dataExtent ? { min: new Date(dataExtent.minT), max: new Date(dataExtent.maxT) } : bounds),
+    [dataExtent, bounds],
+  )
+
+  // Zoom in/out buttons about the centre. Zoom-in shrinks until one unit fills
+  // the screen, then drills to the next finer unit (zoomInSnap); zoom-out grows
+  // within the data bounds. Both are just range/unit changes on the history.
+  const zoomIn = useCallback(
+    () => commitTime((cur) => zoomInSnap(cur, 0.5, 0.5, zoomBounds)),
+    [commitTime, zoomBounds],
+  )
+  const zoomOut = useCallback(
+    () => commitTime((cur) => zoomOutSnap(cur, 2, 0.5, zoomBounds)),
+    [commitTime, zoomBounds],
+  )
+  // Zoom-in bottoms out only at a single day at day units; zoom-out at the data extent.
+  const canZoomIn = !(granularity === 'day' && spansOneBucket(activeRange, 'day'))
+  const canZoomOut =
+    activeRange.start.getTime() > startOfDay(zoomBounds.min.getTime()).getTime() ||
+    activeRange.end.getTime() < startOfDay(zoomBounds.max.getTime()).getTime()
+
+  // Wheel / pinch zoom, anchored under the pointer. Rapid events within
+  // GESTURE_COALESCE_MS collapse into one history entry (replace the top) so a
+  // scroll/pinch burst is a single Back step.
+  const lastZoomTs = useRef(0)
+  const zoomGesture = useCallback(
+    (factor: number, anchorFraction: number) => {
+      const now = Date.now()
+      const replace = now - lastZoomTs.current < GESTURE_COALESCE_MS
+      lastZoomTs.current = now
+      commitTime(
+        (cur) =>
+          factor < 1
+            ? zoomInSnap(cur, factor, anchorFraction, zoomBounds)
+            : zoomOutSnap(cur, factor, anchorFraction, zoomBounds),
+        null,
+        { replace },
+      )
+    },
+    [commitTime, zoomBounds],
+  )
+
+  // Middle-button drag → horizontal pan. `fraction` is cumulative drag distance
+  // (as a share of chart width) since the gesture began; applied to the base range
+  // captured on the first move, so the whole drag is one history entry.
+  const panBaseRef = useRef<DateRange | null>(null)
+  const panGesture = useCallback(
+    (fraction: number, phase: 'move' | 'end') => {
+      if (phase === 'end') {
+        panBaseRef.current = null
+        return
+      }
+      const first = panBaseRef.current === null
+      const base = panBaseRef.current ?? activeRange
+      if (first) panBaseRef.current = base
+      commitTime((cur) => ({ range: panRange(base, fraction, zoomBounds), gran: cur.gran }), null, {
+        replace: !first,
+      })
+    },
+    [commitTime, zoomBounds, activeRange],
+  )
+
   // Can the whole window slide one unit further and still overlap data? The
   // prev/next buttons stay visible always (see DayStatsCard) but disable at the
   // data's edges. Based on the window edges, not the focus, so they work whether
@@ -1307,7 +1386,7 @@ export function Dashboard() {
                     type="button"
                     onClick={zoomIn}
                     disabled={!canZoomIn}
-                    title="Zoom in — halve the range around its centre"
+                    title="Zoom in — shrink to one unit, then switch to a finer unit"
                     className="rounded-md px-3 py-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
                   >
                     ＋
@@ -1316,7 +1395,7 @@ export function Dashboard() {
                     type="button"
                     onClick={zoomOut}
                     disabled={!canZoomOut}
-                    title="Zoom out — double the range around its centre"
+                    title="Zoom out — double the range (within the data's span)"
                     className="rounded-md px-3 py-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
                   >
                     －

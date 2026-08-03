@@ -540,8 +540,11 @@ export function MultiTrendChart({
           margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
           barGap={0}
           barCategoryGap={0}
-          onMouseDown={(state: unknown, e: { clientX?: number }) => {
+          onMouseDown={(state: unknown, e: { clientX?: number; button?: number }) => {
             if (!canZoom) return
+            // Left button only: the middle button is the horizontal-pan gesture
+            // (useChartGestures), so it must not also start a range selection.
+            if (e?.button !== undefined && e.button !== 0) return
             draggedRef.current = false // clear any stale flag from a prior gesture
             const idx = activeIndexOf(state, data)
             if (idx !== null) {
