@@ -1,0 +1,70 @@
+name: Propose events (AI → PR)
+
+# MANUAL ONLY — never scheduled. Runs Claude on your Claude subscription to
+# propose new / backfilled events, then opens a Pull Request for you to review
+# (and edit) before merging. Existing rows are never modified by the prompt.
+#
+# One-time setup before the first run:
+#   1. Locally: `claude setup-token` (needs a Pro/Max/Team/Enterprise plan) →
+#      copy the printed token.
+#   2. Repo → Settings → Secrets and variables → Actions → New secret:
+#      name CLAUDE_CODE_OAUTH_TOKEN, value = that token. (Re-run yearly; it expires.)
+#   3. Repo → Settings → Actions → General → Workflow permissions →
+#      tick "Allow GitHub Actions to create and approve pull requests".
+on:
+  workflow_dispatch:
+    inputs:
+      guidance:
+        description: 'Optional extra guidance for this run (e.g. "focus on 2026 Brașov concerts")'
+        required: false
+        default: ''
+
+permissions:
+  contents: write # push the proposal branch
+  pull-requests: write # open the PR
+
+concurrency:
+  group: generate-events
+  cancel-in-progress: false
+
+jobs:
+  propose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Propose events
+        env:
+          # Uses your Claude subscription (not pay-per-token API billing).
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GUIDANCE: ${{ github.event.inputs.guidance }}
+        run: |
+          PROMPT="$(cat .github/prompts/generate-events.md)"
+          if [ -n "$GUIDANCE" ]; then
+            PROMPT="$PROMPT"$'\n\n## Extra guidance for this run\n'"$GUIDANCE"
+          fi
+          claude -p "$PROMPT" \
+            --allowedTools "Read,Grep,Glob,Edit,Write" \
+            --max-turns 40
+
+      - name: Open PR with proposed events
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: events/ai-proposals
+          delete-branch: true
+          title: 'AI-proposed events (review before merge)'
+          commit-message: 'chore(events): AI-proposed additions/backfill'
+          body: |
+            Automated proposal from the **Propose events** workflow.
+
+            Review the added / backfilled rows in `public/data/events/*.csv` before merging.
+            Existing Start/End/Name/Importance values should be unchanged — check the diff.
+          # Only ever commit the event CSVs, even if the model touched anything else.
+          add-paths: |
+            public/data/events/*.csv
