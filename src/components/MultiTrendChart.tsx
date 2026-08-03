@@ -373,8 +373,12 @@ export function MultiTrendChart({
               x1={data[Math.min(drag.startIdx, drag.endIdx)].label}
               x2={data[Math.max(drag.startIdx, drag.endIdx)].label}
               fill={colors.axis}
-              fillOpacity={0.15}
+              fillOpacity={0.18}
               strokeOpacity={0}
+              // ReferenceArea defaults to zIndex 100 (below grid/bars/lines), so
+              // the selection was buried behind the series. Lift it just under
+              // the hover band (cursorLine = 1100) so it reads on top.
+              zIndex={1050}
             />
           )}
           <XAxis
