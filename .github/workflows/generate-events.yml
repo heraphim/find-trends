@@ -49,9 +49,50 @@ jobs:
           if [ -n "$GUIDANCE" ]; then
             PROMPT="$PROMPT"$'\n\n## Extra guidance for this run\n'"$GUIDANCE"
           fi
+          # --output-format json emits one result object (usage + cost) to stdout;
+          # file edits still happen during the run.
           claude -p "$PROMPT" \
             --allowedTools "Read,Grep,Glob,Edit,Write" \
-            --max-turns 40
+            --max-turns 40 \
+            --output-format json > claude-result.json
+
+      - name: Build PR body with token/cost report
+        if: always()
+        run: |
+          R=claude-result.json
+          {
+            echo "Automated proposal from the **Propose events** workflow."
+            echo ""
+            echo "Review the added / backfilled rows in \`public/data/events/*.csv\` before merging."
+            echo "Existing Start/End/Name/Importance values should be unchanged — check the diff."
+            echo ""
+            echo "### Run cost"
+            echo ""
+          } > pr-body.md
+          if [ -s "$R" ] && jq -e . "$R" >/dev/null 2>&1; then
+            IN=$(jq -r '.usage.input_tokens // 0' "$R")
+            OUT=$(jq -r '.usage.output_tokens // 0' "$R")
+            CR=$(jq -r '.usage.cache_read_input_tokens // 0' "$R")
+            CW=$(jq -r '.usage.cache_creation_input_tokens // 0' "$R")
+            TURNS=$(jq -r '.num_turns // "?"' "$R")
+            COST=$(jq -r '(.total_cost_usd // .cost_usd) // empty' "$R")
+            TOTAL=$((IN + OUT + CR + CW))
+            {
+              echo "| Metric | Value |"
+              echo "| --- | ---: |"
+              echo "| Turns | $TURNS |"
+              echo "| Input tokens | $IN |"
+              echo "| Output tokens | $OUT |"
+              echo "| Cache read tokens | $CR |"
+              echo "| Cache write tokens | $CW |"
+              echo "| **Total tokens** | **$TOTAL** |"
+              [ -n "$COST" ] && printf '| Est. cost (USD) | $%s |\n' "$COST"
+            } >> pr-body.md
+          else
+            echo "_No usage data captured (the Claude step may have failed — see the job log)._" >> pr-body.md
+          fi
+          # Mirror the report into the Actions run summary too.
+          cat pr-body.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Open PR with proposed events
         uses: peter-evans/create-pull-request@v6
@@ -60,11 +101,7 @@ jobs:
           delete-branch: true
           title: 'AI-proposed events (review before merge)'
           commit-message: 'chore(events): AI-proposed additions/backfill'
-          body: |
-            Automated proposal from the **Propose events** workflow.
-
-            Review the added / backfilled rows in `public/data/events/*.csv` before merging.
-            Existing Start/End/Name/Importance values should be unchanged — check the diff.
+          body-path: pr-body.md
           # Only ever commit the event CSVs, even if the model touched anything else.
           add-paths: |
             public/data/events/*.csv
