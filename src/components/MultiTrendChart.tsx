@@ -259,7 +259,9 @@ export function MultiTrendChart({
             }
           }}
         >
-          <CartesianGrid stroke={colors.grid} vertical={false} />
+          {/* Vertical lines delimit each time unit; suppressed when dense to avoid
+              a wall of lines (the hover band still highlights units at any density). */}
+          <CartesianGrid stroke={colors.grid} vertical={data.length <= 60} />
           {dragging && drag && (
             <ReferenceArea
               x1={data[Math.min(drag.startIdx, drag.endIdx)].label}
@@ -298,7 +300,7 @@ export function MultiTrendChart({
             tickMargin={8}
             minTickGap={44}
             axisLine={{ stroke: colors.grid }}
-            tickLine={false}
+            tickLine={{ stroke: colors.grid }}
           />
           <YAxis
             tick={{ fill: colors.axis, fontSize: 12 }}
@@ -314,8 +316,10 @@ export function MultiTrendChart({
           />
           {/* Hidden axis that keeps sales bars in the lower band of the plot. */}
           {barIds.length > 0 && <YAxis yAxisId="sales" hide domain={barDomain} />}
+          {/* Category x-axis → Recharts renders the cursor as a band, so a fill
+              highlights the whole hovered time unit (not just a line). */}
           <Tooltip
-            cursor={{ stroke: colors.axis, strokeDasharray: '3 3' }}
+            cursor={{ fill: colors.axis, fillOpacity: 0.12 }}
             content={
               <ChartTooltip
                 series={allSeries}
