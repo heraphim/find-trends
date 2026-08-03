@@ -596,6 +596,12 @@ export function MultiTrendChart({
             }
           />
           <Legend
+            // Recharts defaults to itemSorter:'value', which re-orders legend
+            // entries by each series' id string — a different order than the
+            // bars/lines are declared and drawn in (so Brașov could sit left on
+            // the chart but right in the legend). null keeps insertion order, so
+            // the legend matches the visual series order.
+            itemSorter={null}
             onMouseEnter={(o) => {
               const p = o as { dataKey?: string | number; value?: string }
               const id = p.dataKey ?? p.value

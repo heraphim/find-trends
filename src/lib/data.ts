@@ -307,7 +307,10 @@ export function seriesCorrelations(
       if (r !== null) out.push({ a: series[i].label, b: series[j].label, r, n: xs.length })
     }
   }
-  return out.sort((x, y) => Math.abs(y.r) - Math.abs(x.r))
+  // Order by how positive the relation is: most positive first, most negative
+  // last (rather than by absolute strength), so the list reads top-to-bottom
+  // from strongest agreement to strongest inverse relation.
+  return out.sort((x, y) => y.r - x.r)
 }
 
 // The start epoch of the bucket one granularity unit before (dir -1) or after
