@@ -343,6 +343,11 @@ export function MultiTrendChart({
   // baseline line (dataKey `__ev`) and pin the y-axis to a dummy [0,1] domain.
   const emptyChart = series.length === 0 && bars.length === 0
   const plotData = emptyChart ? data.map((d) => ({ ...d, __ev: 0 })) : data
+  // The main (left) y-axis only carries the trend lines. With no line series —
+  // an events-only chart, or a sales-bars-only chart (bars live on their own
+  // hidden axis) — it has nothing to label, so collapse its reserved width
+  // instead of leaving ~56px of blank gutter down the left of the plot.
+  const hideMainAxis = series.length === 0
 
   // Legend hover → "glow" the hovered series (emphasise it, dim the rest).
   const [hoveredSeries, setHoveredSeries] = useState<string | null>(null)
@@ -380,7 +385,7 @@ export function MultiTrendChart({
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={plotData}
-          margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
+          margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
           barGap={0}
           barCategoryGap="18%"
           onMouseDown={(state: unknown) => {
@@ -445,9 +450,9 @@ export function MultiTrendChart({
           {/* Empty (events-only) chart: keep the y-axis + its [0,1] scale so the
               event markers still anchor, but render it invisibly (no ticks). */}
           <YAxis
-            tick={emptyChart ? false : { fill: colors.axis, fontSize: 12 }}
+            tick={hideMainAxis ? false : { fill: colors.axis, fontSize: 12 }}
             tickMargin={8}
-            width={emptyChart ? 8 : 56}
+            width={hideMainAxis ? 8 : 56}
             domain={emptyChart ? [0, 1] : undefined}
             axisLine={false}
             tickLine={false}
