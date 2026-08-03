@@ -43,6 +43,14 @@ Static CSVs in `public/data/`, served from the app's own origin (no external cal
   - commodities: `<name>_close` + `<name>_change_pct` for Brent, EuroGas (Dutch TTF, replaced Henry Hub), Wheat, Corn, Gold, Copper.
   - days filters: `is_weekend`, `season`, `is_holiday` (RO public holidays). `is_weekday`/`weekday` are excluded as redundant.
 
+### Column display registry (do this for EVERY new column)
+
+Presentation — a column's **display name** and whether it **shows in the app** — lives in the `lib/metricMeta.ts` registry, **never** encoded into CSV headers. The getting-data generators own the raw column names (they double as registry keys and API field names); they must stay machine-clean. So whenever a generator adds/renames a plottable/event column, add a matching registry entry in the **same change**:
+
+- Give it a human `label` and a `tier`: **`primary`** (shown by default in the category dropdown), **`advanced`** (behind the dropdown's "Show advanced" toggle), or **`hidden`** (pure derivation/internal — e.g. `ideal_temp`, `snow_bonus`, `is_forecast`; never surfaced). Metrics go in the `WEATHER`/commodity/FX branches of `metricMeta()`; non-numeric event/day-classifier columns go in the `EVENTS` map (label + tier only).
+- Rule of thumb: v2 scores are `primary`, v1 scores `advanced`; raw components (`apparent_temp_*`, `rain`, `wind_mean`, `*_change_pct`) `advanced`; headline series (`temp_mean`, `precipitation`, `*_close`, `eur_ron`, `nice_day_score_v2`) `primary`.
+- Unregistered columns fall back to `advanced` + raw-key label and log a dev-only `console.warn` — so nothing silently vanishes, but the warning is the signal to add an entry. The `days` sheet is exempt (it feeds `DayFilters`, not chart metrics, and has its own labelling there).
+
 ## App architecture
 
 `Dashboard.tsx` owns almost all state and composes everything. Key pieces:
@@ -50,7 +58,7 @@ Static CSVs in `public/data/`, served from the app's own origin (no external cal
 - `lib/workbook.ts` — discover tabs, build the city/category model.
 - `lib/sheet.ts` — fetch + parse a tab into `{rows, columns}`; classify metric vs event.
 - `lib/data.ts` — types, date parsing, bucketing/aggregation (`aggregateMerged`), % rebasing, Pearson correlation, day-count-per-bucket, `bucketToRange` (clicked point → period).
-- `lib/metricMeta.ts` — per-column unit/label/roll-up: weather raw + v1/v2 scores (0–100 pts share one "Scores" chart), `hazard_factor` (×), `eur_ron` (RON) + `change_pct` (%), commodity `close` (per-instrument price) + `change_pct` (shared % chart).
+- `lib/metricMeta.ts` — the **column display registry**: per-column display `label`, `unit`, roll-up, chart `group`, and `tier` (primary/advanced/hidden — see the rule above). `metricMeta()` covers plottable metrics (weather raw + v1/v2 scores share one "Scores" chart, `hazard_factor` ×, `eur_ron` RON + `change_pct` %, commodity `close` + `change_pct`); the `EVENTS` map covers non-numeric event columns; `columnMeta()` returns `{label, tier}` for any column.
 - `lib/dayFilters.ts` — parse the `days` sheet into filter dimensions (weekend/season/holiday…) + date→attributes map; excludes the redundant `is_weekday` name column.
 - `lib/dateRange.ts` — range math + option lists for the Range picker.
 - `lib/events.ts` — Wikipedia events + heuristic importance scoring (see below).

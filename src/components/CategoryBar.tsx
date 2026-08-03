@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SidebarCategory } from './Sidebar'
+import { columnMeta } from '../lib/metricMeta'
 import { SOURCE_LABEL, type EventSource } from '../lib/eventsData'
 
 const EVENTS_KEY = '__events__'
@@ -26,7 +27,34 @@ function CountBadge({ n }: { n: number }) {
   )
 }
 
-// The metric checkbox list shown inside a category's popover.
+// One checkbox row for a metric column (labelled via the display registry).
+function MetricRow({
+  cat,
+  col,
+  isSelected,
+  onToggleColumn,
+}: {
+  cat: SidebarCategory
+  col: string
+  isSelected: (cat: SidebarCategory, col: string) => boolean
+  onToggleColumn: (cat: SidebarCategory, col: string) => void
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
+      <input
+        type="checkbox"
+        checked={isSelected(cat, col)}
+        onChange={() => onToggleColumn(cat, col)}
+        className="h-3.5 w-3.5 accent-blue-600"
+      />
+      <span className="truncate text-slate-700 dark:text-slate-200">{columnMeta(col).label}</span>
+    </label>
+  )
+}
+
+// The metric checkbox list shown inside a category's popover. Primary metrics
+// show by default; advanced ones sit behind a per-popover "Show advanced" toggle
+// (selected advanced metrics stay visible so they can be unchecked).
 function MetricList({
   cat,
   isSelected,
@@ -36,27 +64,36 @@ function MetricList({
   isSelected: (cat: SidebarCategory, col: string) => boolean
   onToggleColumn: (cat: SidebarCategory, col: string) => void
 }) {
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
   if (cat.status === 'loading') return <div className="px-3 py-2 text-xs text-slate-400">Loading…</div>
   if (cat.status === 'error')
     return <div className="px-3 py-2 text-xs text-red-500">{cat.message ?? 'Failed to load.'}</div>
   if (cat.metrics.length === 0)
     return <div className="px-3 py-2 text-xs text-slate-400">No metrics.</div>
+
+  const primary = cat.metrics.filter((c) => columnMeta(c).tier === 'primary')
+  const advanced = cat.metrics.filter((c) => columnMeta(c).tier !== 'primary')
+  const shownAdvanced = showAdvanced ? advanced : advanced.filter((c) => isSelected(cat, c))
+  const hiddenAdvancedCount = advanced.length - shownAdvanced.length
+
   return (
     <div className="max-h-72 overflow-y-auto p-1">
-      {cat.metrics.map((col) => (
-        <label
-          key={col}
-          className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-        >
-          <input
-            type="checkbox"
-            checked={isSelected(cat, col)}
-            onChange={() => onToggleColumn(cat, col)}
-            className="h-3.5 w-3.5 accent-blue-600"
-          />
-          <span className="truncate text-slate-700 dark:text-slate-200">{col}</span>
-        </label>
+      {primary.map((col) => (
+        <MetricRow key={col} cat={cat} col={col} isSelected={isSelected} onToggleColumn={onToggleColumn} />
       ))}
+      {shownAdvanced.map((col) => (
+        <MetricRow key={col} cat={cat} col={col} isSelected={isSelected} onToggleColumn={onToggleColumn} />
+      ))}
+      {advanced.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((v) => !v)}
+          className="mt-1 flex w-full items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+        >
+          {showAdvanced ? 'Hide advanced' : `Show advanced${hiddenAdvancedCount > 0 ? ` (${hiddenAdvancedCount})` : ''}`}
+        </button>
+      )}
     </div>
   )
 }

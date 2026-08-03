@@ -12,8 +12,9 @@ export function prettyCategory(s: string): string {
     .join(' ')
 }
 
-// Human label for a series: "Brasov · temp_mean" / "Commodities · Gold_close".
-// Column keys are left as-is (precise) except underscores are kept for clarity.
-export function seriesLabel(cityOrCategory: string, column: string): string {
-  return `${capitalize(cityOrCategory)} · ${column}`
+// Human label for a series, e.g. "Brasov · Mean temperature". Callers pass the
+// column's display label (from metricMeta) as `columnLabel`, prefixed by the
+// city/category. (Kept dependency-free to avoid a cycle with metricMeta.)
+export function seriesLabel(cityOrCategory: string, columnLabel: string): string {
+  return `${capitalize(cityOrCategory)} · ${columnLabel}`
 }
