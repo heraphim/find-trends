@@ -344,10 +344,13 @@ export function MultiTrendChart({
   // With no trend lines, let the sales bars use most of the vertical space
   // (small headroom); with lines present, keep them in the lower band.
   const barDomain = salesDomain(data, barIds, series.length === 0 ? 0.15 : 2)
-  // No line/bar series (e.g. an events-only chart): Recharts v3 only draws
-  // ReferenceLine/Area when a graphical series exists, so we add one invisible
-  // baseline line (dataKey `__ev`) and pin the y-axis to a dummy [0,1] domain.
-  const emptyChart = series.length === 0 && bars.length === 0
+  // No line series on the main axis (an events-only chart, OR a sales-bars-only
+  // chart — bars live on their own hidden axis and don't anchor the main one):
+  // Recharts v3 only draws ReferenceLine/Area when a graphical series exists on
+  // the axis, so we add one invisible baseline line (dataKey `__ev`) and pin the
+  // y-axis to a dummy [0,1] domain. Otherwise event markers vanish whenever the
+  // only plotted content is sales bars.
+  const emptyChart = series.length === 0
   const plotData = emptyChart ? data.map((d) => ({ ...d, __ev: 0 })) : data
   // The main (left) y-axis only carries the trend lines. With no line series —
   // an events-only chart, or a sales-bars-only chart (bars live on their own
