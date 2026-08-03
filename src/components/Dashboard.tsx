@@ -3,6 +3,7 @@ import { fetchSheetData } from '../lib/sheet'
 import {
   aggregateMerged,
   bucketDates,
+  bucketRow,
   bucketSkeleton,
   bucketStart,
   bucketToRange,
@@ -1094,7 +1095,7 @@ export function Dashboard() {
       <SalesSummaryPanel datasets={checkedDatasets.filter((d) => d.summary)} onJumpToDay={jumpToDay} />
 
       {/* Chart area (full width) */}
-      <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-semibold">
