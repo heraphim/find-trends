@@ -118,7 +118,7 @@ export function DayStatsCard({ title, columns, onClear, onPrev, onNext }: Props)
               type="button"
               onClick={onPrev}
               title="Previous"
-              className="rounded border border-slate-300 px-1 text-xs font-medium text-slate-600 opacity-0 transition-opacity hover:bg-slate-100 focus:opacity-100 group-hover:opacity-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="rounded border border-slate-300 px-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               ←
             </button>
@@ -131,7 +131,7 @@ export function DayStatsCard({ title, columns, onClear, onPrev, onNext }: Props)
               type="button"
               onClick={onNext}
               title="Next"
-              className="rounded border border-slate-300 px-1 text-xs font-medium text-slate-600 opacity-0 transition-opacity hover:bg-slate-100 focus:opacity-100 group-hover:opacity-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="rounded border border-slate-300 px-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               →
             </button>

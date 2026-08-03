@@ -6,6 +6,7 @@ import {
   bucketSkeleton,
   bucketStart,
   bucketToRange,
+  stepBucket,
   mergeRowsByT,
   rebaseToPercent,
   seriesCorrelations,
@@ -182,6 +183,20 @@ function MarkerLegend({
   )
 }
 
+// Slide a date range by one granularity unit (day/week/month/year), preserving
+// each bound's time-of-day so the [start 00:00 … end 23:59] window keeps its
+// width. Used to pan the whole chart when stepping the selected period.
+function shiftRangeByUnit(r: DateRange, g: Granularity, dir: 1 | -1): DateRange {
+  const bump = (d: Date): Date => {
+    const [h, m, s, ms] = [d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds()]
+    if (g === 'year') return new Date(d.getFullYear() + dir, d.getMonth(), d.getDate(), h, m, s, ms)
+    if (g === 'month') return new Date(d.getFullYear(), d.getMonth() + dir, d.getDate(), h, m, s, ms)
+    if (g === 'week') return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7 * dir, h, m, s, ms)
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + dir, h, m, s, ms)
+  }
+  return { start: bump(r.start), end: bump(r.end) }
+}
+
 // Collapse curated events into chart markers spanning start→end buckets (clamped
 // to the visible range), keeping the strongest tier and collecting event names.
 // Same start & end bucket → a single-bucket marker (rendered as a line).
@@ -285,6 +300,9 @@ export function Dashboard() {
   )
   // A clicked chart point focuses the events panel on that bucket's period.
   const [focusedT, setFocusedT] = useState<number | null>(null)
+  // Set true just before a prev/next step so the range-change effect below pans
+  // the window without clearing the (deliberately moved) selection.
+  const shiftingRef = useRef(false)
   // Event-legend hover → glow the matching marker on the chart.
   const [hoveredMarker, setHoveredMarker] = useState<string | null>(null)
   // Collapse the whole Trends chart section (controls + chart).
@@ -787,8 +805,14 @@ export function Dashboard() {
     [withDayCounts, buildData, scaleMode, salesSelections, activeRange, allowedDates, granularity],
   )
 
-  // A change of range/granularity invalidates the clicked bucket.
+  // A change of range/granularity invalidates the clicked bucket — EXCEPT a
+  // prev/next step, which deliberately pans the window and moves the selection
+  // with it (the ref, set by shiftSelection, is consumed here).
   useEffect(() => {
+    if (shiftingRef.current) {
+      shiftingRef.current = false
+      return
+    }
     setFocusedT(null)
   }, [granularity, activeRange])
 
@@ -834,22 +858,56 @@ export function Dashboard() {
     return cols
   }, [focusedRange, discovery, includedCities, checkedDatasets, sheetStates])
 
-  // Step the selected period back/forward one granularity unit (prev/next day…).
-  const shiftFocus = useCallback(
-    (dir: 1 | -1) => {
-      setFocusedT((cur) => {
-        if (cur === null) return cur
-        const d = new Date(cur)
-        let nd: Date
-        if (granularity === 'day') nd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + dir)
-        else if (granularity === 'week') nd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7 * dir)
-        else if (granularity === 'month') nd = new Date(d.getFullYear(), d.getMonth() + dir, 1)
-        else if (granularity === 'year') nd = new Date(d.getFullYear() + dir, 0, 1)
-        else return cur // 'all' — no stepping
-        return bucketStart(nd, granularity).getTime()
-      })
+  // Overall date span of the loaded data (min/max across every ready sheet, read
+  // from each series' sorted endpoints). Bounds how far prev/next can step.
+  const dataExtent = useMemo<{ minT: number; maxT: number } | null>(() => {
+    let minT = Infinity
+    let maxT = -Infinity
+    for (const key of Object.keys(sheetStates)) {
+      const st = sheetStates[key]
+      if (st?.status !== 'ready' || st.data.rows.length === 0) continue
+      const rows = st.data.rows
+      const a = rows[0].date.getTime()
+      const b = rows[rows.length - 1].date.getTime()
+      minT = Math.min(minT, a, b)
+      maxT = Math.max(maxT, a, b)
+    }
+    return maxT >= minT ? { minT, maxT } : null
+  }, [sheetStates])
+
+  // Can the selection step one unit further and still land on a bucket that has
+  // data? (Hides the prev/next buttons at the dataset's edges.)
+  const stepInBounds = useCallback(
+    (dir: 1 | -1): boolean => {
+      if (focusedT === null || granularity === 'all' || !dataExtent) return false
+      const next = stepBucket(focusedT, granularity, dir)
+      if (next === null) return false
+      const first = bucketStart(new Date(dataExtent.minT), granularity).getTime()
+      const last = bucketStart(new Date(dataExtent.maxT), granularity).getTime()
+      return next >= first && next <= last
     },
-    [granularity],
+    [focusedT, granularity, dataExtent],
+  )
+  const canPrev = stepInBounds(-1)
+  const canNext = stepInBounds(1)
+
+  // Step the selected period one granularity unit (prev/next) AND pan the whole
+  // chart window by the same unit so the selection stays put on screen. The
+  // shiftingRef tells the range-change effect to keep (not clear) the selection.
+  const shiftSelection = useCallback(
+    (dir: 1 | -1) => {
+      if (focusedT === null || granularity === 'all') return
+      const nextT = stepBucket(focusedT, granularity, dir)
+      if (nextT === null) return
+      shiftingRef.current = true
+      setFocusedT(nextT)
+      if (zoomStack.length) {
+        setZoomStack((s) => [...s.slice(0, -1), shiftRangeByUnit(s[s.length - 1], granularity, dir)])
+      } else {
+        setRange((r) => shiftRangeByUnit(r, granularity, dir))
+      }
+    },
+    [focusedT, granularity, zoomStack.length, setZoomStack, setRange],
   )
 
   // All selected curated events (full history), then range-filtered two ways:
@@ -1142,6 +1200,7 @@ export function Dashboard() {
                     bucketEvents={bucketEvents}
                     onZoom={zoomTo}
                     hoveredMarkerKey={hoveredMarker}
+                    selectedT={focusedT}
                   />
                   <MarkerLegend markers={markers} onHover={setHoveredMarker} hoveredKey={hoveredMarker} />
                   {g.correlations.length > 0 && (
@@ -1175,8 +1234,8 @@ export function Dashboard() {
           title={periodLabel(focusedRange)}
           columns={dayCityColumns}
           onClear={() => setFocusedT(null)}
-          onPrev={() => shiftFocus(-1)}
-          onNext={() => shiftFocus(1)}
+          onPrev={canPrev ? () => shiftSelection(-1) : undefined}
+          onNext={canNext ? () => shiftSelection(1) : undefined}
         />
       )}
 

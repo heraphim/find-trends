@@ -52,6 +52,7 @@ interface Props {
   bucketEvents?: BucketEvent[]
   onZoom?: (startT: number, endT: number) => void
   hoveredMarkerKey?: string | null // event-legend hover → glow that marker
+  selectedT?: number | null // the clicked/selected bucket, highlighted like hover
 }
 
 // A marker's stable key (must match the event legend's key).
@@ -96,6 +97,47 @@ function UnitTicks({ labels, tickColor }: { labels: string[]; tickColor: string 
           </g>
         ) : null,
       )}
+    </g>
+  )
+}
+
+// Persistent highlight for the selected bucket — the same full-unit band the
+// hover cursor paints, but pinned (dashed outline) so a clicked day/week/month
+// stays marked on the chart. Hosted in a <Customized> so the layout hooks
+// resolve; centered on the unit via the category scale, width = one bucket.
+function SelectedBand({
+  label,
+  bucketCount,
+  fill,
+}: {
+  label: string
+  bucketCount: number
+  fill: string
+}) {
+  const plot = usePlotArea()
+  const scale = useXAxisScale()
+  if (!plot || typeof scale !== 'function' || bucketCount <= 0) return null
+  const cx = scale(label, { position: 'middle' })
+  if (typeof cx !== 'number') return null
+  const band = plot.width / bucketCount
+  const x1 = Math.max(plot.x, cx - band / 2)
+  const x2 = Math.min(plot.x + plot.width, cx + band / 2)
+  const w = x2 - x1
+  if (w <= 0) return null
+  return (
+    <g pointerEvents="none">
+      <rect x={x1} y={plot.y} width={w} height={plot.height} fill={fill} fillOpacity={0.1} />
+      <rect
+        x={x1}
+        y={plot.y}
+        width={w}
+        height={plot.height}
+        fill="none"
+        stroke={fill}
+        strokeOpacity={0.45}
+        strokeWidth={1}
+        strokeDasharray="3 3"
+      />
     </g>
   )
 }
@@ -283,9 +325,13 @@ export function MultiTrendChart({
   bucketEvents,
   onZoom,
   hoveredMarkerKey,
+  selectedT,
 }: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
+  // Label of the selected bucket → a persistent highlight band on that unit.
+  const selectedLabel =
+    selectedT != null ? (data.find((d) => d.t === selectedT)?.label ?? null) : null
   const bars = barSeries ?? []
   const allSeries = [...series, ...bars]
   const lineIds = new Set(series.map((s) => s.id))
@@ -368,6 +414,13 @@ export function MultiTrendChart({
           <Customized
             component={() => <UnitTicks labels={data.map((d) => d.label)} tickColor={colors.axis} />}
           />
+          {selectedLabel && (
+            <Customized
+              component={() => (
+                <SelectedBand label={selectedLabel} bucketCount={data.length} fill={colors.axis} />
+              )}
+            />
+          )}
           {dragging && drag && (
             <ReferenceArea
               x1={data[Math.min(drag.startIdx, drag.endIdx)].label}

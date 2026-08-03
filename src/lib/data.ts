@@ -310,6 +310,20 @@ export function seriesCorrelations(
   return out.sort((x, y) => Math.abs(y.r) - Math.abs(x.r))
 }
 
+// The start epoch of the bucket one granularity unit before (dir -1) or after
+// (dir +1) `t`. `t` need not be bucket-aligned; the result always is. Returns
+// null for 'all' (there is nothing to step to).
+export function stepBucket(t: number, g: Granularity, dir: 1 | -1): number | null {
+  if (g === 'all') return null
+  const d = new Date(t)
+  let nd: Date
+  if (g === 'year') nd = new Date(d.getFullYear() + dir, 0, 1)
+  else if (g === 'month') nd = new Date(d.getFullYear(), d.getMonth() + dir, 1)
+  else if (g === 'week') nd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7 * dir)
+  else nd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + dir)
+  return bucketStart(nd, g).getTime()
+}
+
 // The date range a clicked chart point (bucket) covers, given the granularity.
 // Returns null for 'all' (the single point spans the whole range).
 export function bucketToRange(t: number, g: Granularity): DateRange | null {
