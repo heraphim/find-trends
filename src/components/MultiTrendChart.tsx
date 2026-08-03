@@ -522,7 +522,7 @@ export function MultiTrendChart({
           data={plotData}
           margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
           barGap={0}
-          barCategoryGap="18%"
+          barCategoryGap={0}
           onMouseDown={(state: unknown, e: { clientX?: number }) => {
             if (!canZoom) return
             draggedRef.current = false // clear any stale flag from a prior gesture
@@ -662,7 +662,6 @@ export function MultiTrendChart({
                 fill={colorById[s.id] ?? colors.categorical[0]}
                 fillOpacity={emph === 'on' ? 0.9 : emph === 'dim' ? 0.12 : 0.5}
                 isAnimationActive={false}
-                maxBarSize={48}
               />
             )
           })}
