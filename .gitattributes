@@ -1,2 +1,9 @@
 # Normalize line endings to LF in the repo; check out native on each OS.
 * text=auto eol=lf
+
+# CSV-aware diffs for the published data files. Renders aligned, cell-level
+# changes via daff instead of raw line diffs. Requires a local git driver:
+#   git config diff.daff.command "daff diff --git"
+# and daff on PATH (npm i -g daff). Without them, git safely falls back to the
+# default line diff, so this line is harmless for anyone who hasn't set it up.
+public/data/*.csv diff=daff
