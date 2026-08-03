@@ -44,18 +44,27 @@ function Glyph({ children, title }: { children: string; title: string }) {
   )
 }
 
-// Money vs the city's average day: 💰 with a coloured up/down arrow.
+// Money vs the city's average day: 💰 with 1/2/3 overlapping up/down arrows
+// (small/medium/big change), coloured by direction.
 function MoneyGlyph({ period, baseline }: { period: number; baseline: number }) {
   const pct = baseline !== 0 ? (period / baseline - 1) * 100 : 0
-  const up = pct >= 10
-  const down = pct <= -10
-  const arrow = up ? '▲' : down ? '▼' : '≈'
-  const color = up ? '#16a34a' : down ? '#dc2626' : '#94a3b8'
+  const mag = Math.abs(pct)
+  const count = mag >= 30 ? 3 : mag >= 15 ? 2 : mag >= 5 ? 1 : 0 // big / medium / small / ~flat
+  const up = pct > 0
+  const color = count === 0 ? '#94a3b8' : up ? '#16a34a' : '#dc2626'
+  const arrows = count === 0 ? '≈' : (up ? '▲' : '▼').repeat(count)
+  const level = ['about average', 'small', 'medium', 'big'][count]
   const sign = pct > 0 ? '+' : ''
-  const title = `${money(period)}/day vs ${money(baseline)} average day (${sign}${pct.toFixed(0)}%)`
+  const title = `${money(period)}/day vs ${money(baseline)} average day (${sign}${pct.toFixed(0)}%${count ? `, ${up ? 'more' : 'less'} — ${level}` : ''})`
   return (
     <span title={title} className="inline-flex cursor-default items-center gap-0.5 text-base leading-none">
-      💰<span style={{ color }} className="text-xs font-bold">{arrow}</span>
+      💰
+      <span
+        style={{ color, letterSpacing: count > 1 ? '-0.4em' : undefined, paddingRight: count > 1 ? '0.4em' : undefined }}
+        className="text-xs font-bold"
+      >
+        {arrows}
+      </span>
     </span>
   )
 }
