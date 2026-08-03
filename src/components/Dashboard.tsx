@@ -42,7 +42,9 @@ import { useCollapsed } from '../hooks/useCollapsed'
 import { CollapseChevron } from './CollapseChevron'
 import {
   SALES_METRICS,
+  SALES_SUMMARY_VERSION,
   buildSalesSeries,
+  computeSalesSummary,
   meanDailyTotal,
   parseSalesFile,
   salesSelKey,
@@ -56,6 +58,7 @@ import { type SheetState, type SidebarCategory } from './Sidebar'
 import { CategoryBar } from './CategoryBar'
 import { DayFilters } from './DayFilters'
 import { SalesPanel } from './SalesPanel'
+import { SalesSummaryPanel } from './SalesSummaryPanel'
 import { DayStatsCard, type CityDayStats } from './DayStatsCard'
 import { GranularityToggle, GRANULARITY_ORDER } from './GranularityToggle'
 import { DateRangePicker, type RangeMode } from './DateRangePicker'
@@ -289,6 +292,10 @@ export function Dashboard() {
   const [globalSelections, setGlobalSelections] = usePersistedState('ft.globalSel', new Set<string>(), setSerde)
   // Uploaded sales datasets + which of their metrics are plotted (`${dsId}::${metric}`).
   const [salesDatasets, setSalesDatasets] = usePersistedState<SalesDataset[]>('ft.sales', [])
+  // Always-current mirror so the upload handler can decide merge-vs-add without a
+  // stale closure (and stays correct across a same-tick multi-file upload).
+  const salesDatasetsRef = useRef(salesDatasets)
+  salesDatasetsRef.current = salesDatasets
   const [salesSelections, setSalesSelections] = usePersistedState('ft.salesSel', new Set<string>(), setSerde)
   const [colorById, setColorById] = usePersistedState<Record<string, string>>('ft.colors', {})
   const [sheetStates, setSheetStates] = useState<Record<string, SheetState>>({})
@@ -613,15 +620,28 @@ export function Dashboard() {
     setColorById((prev) => ({ ...prev, [id]: color }))
   }, [])
 
-  // Parse an uploaded workbook, add it, and check all three metrics by default.
+  // Parse an uploaded workbook. Same-city uploads MERGE into the existing dataset
+  // (concat + re-sort, summary recomputed) rather than adding a second entity; a
+  // brand-new dataset is added with only its Amount metric checked.
   const handleUploadSales = useCallback(async (file: File) => {
     const ds = await parseSalesFile(file)
-    setSalesDatasets((prev) => [...prev, ds])
-    setSalesSelections((prev) => {
-      const next = new Set(prev)
-      for (const m of SALES_METRICS) next.add(salesSelKey(ds.id, m))
-      return next
-    })
+    const existing = ds.city ? salesDatasetsRef.current.find((d) => d.city === ds.city) : undefined
+    if (existing) {
+      // Merge into the existing city dataset: concat + re-sort, recompute summary,
+      // keep its id (so selections/colors stay valid) and its existing checks.
+      const tx = [...existing.tx, ...ds.tx].sort((a, b) => a[0] - b[0])
+      setSalesDatasets((prev) =>
+        prev.map((d) => (d.id === existing.id ? { ...d, tx, summary: computeSalesSummary(tx) } : d)),
+      )
+    } else {
+      // Brand-new dataset (already carries its summary): add it, check Amount only.
+      setSalesDatasets((prev) => [...prev, ds])
+      setSalesSelections((prev) => {
+        const next = new Set(prev)
+        next.add(salesSelKey(ds.id, 'amount'))
+        return next
+      })
+    }
   }, [])
 
   const removeSalesDataset = useCallback((id: string) => {
@@ -642,6 +662,30 @@ export function Dashboard() {
       return next
     })
   }, [])
+
+  // Backfill summaries for datasets persisted before this shipped (or after a
+  // version bump). Runs once per stale set; writes back so it isn't recomputed.
+  useEffect(() => {
+    if (!salesDatasets.some((d) => d.summary?.version !== SALES_SUMMARY_VERSION)) return
+    setSalesDatasets((prev) =>
+      prev.map((d) =>
+        d.summary?.version === SALES_SUMMARY_VERSION ? d : { ...d, summary: computeSalesSummary(d.tx) },
+      ),
+    )
+  }, [salesDatasets, setSalesDatasets])
+
+  // Click a summary figure → jump the chart range to that single day.
+  const jumpToDay = useCallback(
+    (t: number) => {
+      const d = new Date(t)
+      const day = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+      setRangeMode('day')
+      setGranularity('day')
+      setRange({ start: day, end: day })
+      setZoomStack([])
+    },
+    [setRangeMode, setGranularity, setRange, setZoomStack],
+  )
 
   // Datasets with at least one metric checked (drives the chart + stats card).
   const checkedDatasets = useMemo(
@@ -1046,6 +1090,8 @@ export function Dashboard() {
         onToggle={toggleSalesMetric}
         onRemove={removeSalesDataset}
       />
+
+      <SalesSummaryPanel datasets={checkedDatasets.filter((d) => d.summary)} onJumpToDay={jumpToDay} />
 
       {/* Chart area (full width) */}
       <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">

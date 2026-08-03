@@ -11,6 +11,102 @@ export interface SalesDataset {
   city: string | null // parsed from a "City - …" filename prefix (diacritic-stripped, lowercased)
   uploadedAt: number
   tx: Purchase[] // sorted ascending by date
+  summary: SalesSummary // dataset-intrinsic roll-ups, computed on upload (bump version on shape change)
+}
+
+// Bump when the SalesSummary shape changes so persisted datasets get re-derived
+// (see the lazy backfill in Dashboard).
+export const SALES_SUMMARY_VERSION = 1
+
+export interface DayFigure {
+  t: number // day epoch (local midnight)
+  total: number // that day's total takings
+  kind: 'weekday' | 'weekend'
+}
+export interface PurchaseFigure {
+  t: number // day epoch of the purchase
+  amount: number
+  kind: 'weekday' | 'weekend'
+}
+
+// At-a-glance roll-ups over ALL of a dataset's purchases (ignores range + day
+// filters). Persisted on the dataset and recomputed whenever its tx change.
+export interface SalesSummary {
+  version: number
+  avgPerDay: number // mean of per-day totals (days with sales only)
+  avgWeekday: number // mean of Mon–Fri per-day totals
+  avgWeekend: number // mean of Sat–Sun per-day totals
+  avgPerWeek: number // mean of per-ISO-week totals
+  avgPerMonth: number // mean of per-month totals
+  bestDay: DayFigure | null // highest per-day total overall
+  bestDayOther: DayFigure | null // highest per-day total of the OTHER kind (null if all one kind)
+  biggestPurchase: PurchaseFigure | null // largest single purchase
+}
+
+// Sat/Sun → weekend, else weekday.
+function dayKind(t: number): 'weekday' | 'weekend' {
+  const wd = new Date(t).getDay()
+  return wd === 0 || wd === 6 ? 'weekend' : 'weekday'
+}
+
+function mean(vals: number[]): number {
+  return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0
+}
+
+// Derive every summary figure from a dataset's purchases. Pure; called on upload
+// and on same-city merge.
+export function computeSalesSummary(tx: Purchase[]): SalesSummary {
+  // Per-day totals (tx are already at local midnight).
+  const byDay = new Map<number, number>()
+  for (const [ts, amt] of tx) byDay.set(ts, (byDay.get(ts) ?? 0) + amt)
+
+  const dayTotals = [...byDay.values()]
+  const weekdayTotals: number[] = []
+  const weekendTotals: number[] = []
+  let bestDay: DayFigure | null = null
+  let bestWeekday: DayFigure | null = null
+  let bestWeekend: DayFigure | null = null
+  for (const [t, total] of byDay) {
+    const kind = dayKind(t)
+    if (kind === 'weekend') weekendTotals.push(total)
+    else weekdayTotals.push(total)
+    const fig: DayFigure = { t, total, kind }
+    if (!bestDay || total > bestDay.total) bestDay = fig
+    if (kind === 'weekend') {
+      if (!bestWeekend || total > bestWeekend.total) bestWeekend = fig
+    } else if (!bestWeekday || total > bestWeekday.total) bestWeekday = fig
+  }
+
+  // Week / month roll-ups via the shared bucketing helper.
+  const byWeek = new Map<number, number>()
+  const byMonth = new Map<number, number>()
+  for (const [t, total] of byDay) {
+    const wk = bucketStart(new Date(t), 'week').getTime()
+    const mo = bucketStart(new Date(t), 'month').getTime()
+    byWeek.set(wk, (byWeek.get(wk) ?? 0) + total)
+    byMonth.set(mo, (byMonth.get(mo) ?? 0) + total)
+  }
+
+  let biggestPurchase: PurchaseFigure | null = null
+  for (const [ts, amt] of tx) {
+    if (!biggestPurchase || amt > biggestPurchase.amount) {
+      biggestPurchase = { t: ts, amount: amt, kind: dayKind(ts) }
+    }
+  }
+
+  const bestDayOther = bestDay ? (bestDay.kind === 'weekend' ? bestWeekday : bestWeekend) : null
+
+  return {
+    version: SALES_SUMMARY_VERSION,
+    avgPerDay: mean(dayTotals),
+    avgWeekday: mean(weekdayTotals),
+    avgWeekend: mean(weekendTotals),
+    avgPerWeek: mean([...byWeek.values()]),
+    avgPerMonth: mean([...byMonth.values()]),
+    bestDay,
+    bestDayOther,
+    biggestPurchase,
+  }
 }
 
 // The three per-dataset series a user can plot (checkboxes in the Sales panel).
@@ -38,11 +134,28 @@ const DATA_START = 3 // data begins at row 4
 const DATE_COL = 6 // column G
 const AMOUNT_COL = 8 // column I
 
-// "Brașov - Sales 2024.xlsx" → { name: "Brașov - Sales 2024", city: "brasov" }
+// Hardcoded shop/brand → city map, matched as a substring anywhere in the
+// filename (diacritic- and separator-insensitive). Lets files that don't carry a
+// "City -" prefix still bind to a city. Keys are compared against the normalized,
+// alphanumeric-only filename, so "Micul Cadou 2024.xlsx" → "miculcadou".
+const CITY_KEYWORDS: { keyword: string; city: string }[] = [
+  { keyword: 'june', city: 'sibiu' },
+  { keyword: 'miculcadou', city: 'brasov' },
+]
+
+function cityFromKeywords(name: string): string | null {
+  const hay = normalizeCity(name).replace(/[^a-z0-9]/g, '')
+  for (const { keyword, city } of CITY_KEYWORDS) if (hay.includes(keyword)) return city
+  return null
+}
+
+// "Brașov - Sales 2024.xlsx" → { name: "Brașov - Sales 2024", city: "brasov" }.
+// A known shop keyword anywhere in the name wins; otherwise fall back to the
+// "City -" prefix; otherwise no city.
 function parseName(filename: string): { name: string; city: string | null } {
   const name = filename.replace(/\.[^.]+$/, '').trim()
   const m = /^(.+?)\s*[-–—]\s*/.exec(name)
-  const city = m ? normalizeCity(m[1]) : null
+  const city = cityFromKeywords(name) ?? (m ? normalizeCity(m[1]) : null)
   return { name, city }
 }
 
@@ -143,7 +256,7 @@ export async function parseSalesFile(file: File): Promise<SalesDataset> {
   }
   tx.sort((a, b) => a[0] - b[0])
   const { name, city } = parseName(file.name)
-  return { id: makeId(), name, city, uploadedAt: Date.now(), tx }
+  return { id: makeId(), name, city, uploadedAt: Date.now(), tx, summary: computeSalesSummary(tx) }
 }
 
 void TITLE_ROW // titles row is skipped; kept as documentation of the layout
@@ -235,7 +348,7 @@ export function buildSalesSeries(
         sheet: `sales:${ds.id}`,
         column: metric,
         label: salesLabel(ds, metric),
-        unit: metric === 'amount' ? '' : '%',
+        unit: metric === 'amount' ? 'RON' : '%',
       })
       if (metric === 'amount') {
         for (const a of amounts) put(id, a.t, a.date, a.value)

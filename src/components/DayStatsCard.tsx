@@ -21,12 +21,17 @@ interface Props {
   onNext?: () => void // step it forward one unit
 }
 
-function money(v: number): string {
+function plain(v: number): string {
   return v.toLocaleString(undefined, { maximumFractionDigits: 2 })
 }
 
+function money(v: number): string {
+  return `${plain(v)} RON`
+}
+
+// Join the raw numbers, then append the unit once ("12, 34, 56 RON").
 function list(vs: number[]): string {
-  return vs.length ? vs.map(money).join(', ') : '—'
+  return vs.length ? `${vs.map(plain).join(', ')} RON` : '—'
 }
 
 // Nice-day score → a face from sad to happy.
