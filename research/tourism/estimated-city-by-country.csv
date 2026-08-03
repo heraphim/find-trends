@@ -1,0 +1,256 @@
+# ESTIMATE - modelled, not measured. See estimate_city_provenance.py.
+# Real inputs: city-arrivals-annual.csv (Tempo TUR104F) + romania-foreign-by-country.csv (INS annual, national).
+# German uplift: Brasov=1.35 Sibiu=1.55.
+city,year,country,estimated_foreign_arrivals,share_of_foreign_pct
+Brasov,2020,Other countries,4655,17.46
+Brasov,2020,Germany,3796,14.24
+Brasov,2020,Italy,2174,8.15
+Brasov,2020,Israel,1909,7.16
+Brasov,2020,USA,1473,5.53
+Brasov,2020,United Kingdom,1465,5.49
+Brasov,2020,Spain,1232,4.62
+Brasov,2020,Poland,1219,4.57
+Brasov,2020,Hungary,1191,4.47
+Brasov,2020,France,1050,3.94
+Brasov,2020,Ukraine,990,3.71
+Brasov,2020,Moldova,950,3.56
+Brasov,2020,Bulgaria,908,3.41
+Brasov,2020,Turkey,637,2.39
+Brasov,2020,Greece,573,2.15
+Brasov,2020,Netherlands,567,2.13
+Brasov,2020,Austria,507,1.9
+Brasov,2020,China,370,1.39
+Brasov,2020,Serbia,366,1.37
+Brasov,2020,Belgium,335,1.26
+Brasov,2020,Switzerland,301,1.13
+Brasov,2021,Other countries,9105,17.14
+Brasov,2021,Germany,8978,16.9
+Brasov,2021,Italy,4381,8.25
+Brasov,2021,Israel,3006,5.66
+Brasov,2021,USA,2882,5.43
+Brasov,2021,United Kingdom,2865,5.4
+Brasov,2021,Spain,2409,4.54
+Brasov,2021,Poland,2383,4.49
+Brasov,2021,Hungary,2329,4.38
+Brasov,2021,France,2054,3.87
+Brasov,2021,Ukraine,1935,3.64
+Brasov,2021,Moldova,1857,3.5
+Brasov,2021,Bulgaria,1776,3.34
+Brasov,2021,Turkey,1247,2.35
+Brasov,2021,Greece,1120,2.11
+Brasov,2021,Netherlands,1109,2.09
+Brasov,2021,Austria,991,1.87
+Brasov,2021,China,723,1.36
+Brasov,2021,Serbia,715,1.35
+Brasov,2021,Belgium,655,1.23
+Brasov,2021,Switzerland,589,1.11
+Brasov,2022,Other countries,18053,17.01
+Brasov,2022,Germany,15712,14.81
+Brasov,2022,Israel,9660,9.1
+Brasov,2022,Italy,7882,7.43
+Brasov,2022,USA,5714,5.38
+Brasov,2022,United Kingdom,5682,5.35
+Brasov,2022,Spain,4776,4.5
+Brasov,2022,Poland,4726,4.45
+Brasov,2022,Hungary,4617,4.35
+Brasov,2022,France,4073,3.84
+Brasov,2022,Ukraine,3837,3.62
+Brasov,2022,Moldova,3682,3.47
+Brasov,2022,Bulgaria,3522,3.32
+Brasov,2022,Turkey,2472,2.33
+Brasov,2022,Greece,2222,2.09
+Brasov,2022,Netherlands,2199,2.07
+Brasov,2022,Austria,1966,1.85
+Brasov,2022,China,1434,1.35
+Brasov,2022,Serbia,1418,1.34
+Brasov,2022,Belgium,1298,1.22
+Brasov,2022,Switzerland,1167,1.1
+Brasov,2023,Other countries,28696,17.49
+Brasov,2023,Germany,23001,14.02
+Brasov,2023,Italy,13980,8.52
+Brasov,2023,Israel,11270,6.87
+Brasov,2023,USA,9082,5.54
+Brasov,2023,United Kingdom,9031,5.5
+Brasov,2023,Spain,7591,4.63
+Brasov,2023,Poland,7512,4.58
+Brasov,2023,Hungary,7340,4.47
+Brasov,2023,France,6475,3.95
+Brasov,2023,Ukraine,6100,3.72
+Brasov,2023,Moldova,5853,3.57
+Brasov,2023,Bulgaria,5599,3.41
+Brasov,2023,Turkey,3929,2.39
+Brasov,2023,Greece,3531,2.15
+Brasov,2023,Netherlands,3496,2.13
+Brasov,2023,Austria,3124,1.9
+Brasov,2023,China,2280,1.39
+Brasov,2023,Serbia,2253,1.37
+Brasov,2023,Belgium,2064,1.26
+Brasov,2023,Switzerland,1856,1.13
+Brasov,2024,Other countries,32473,17.76
+Brasov,2024,Germany,24872,13.6
+Brasov,2024,Italy,15746,8.61
+Brasov,2024,Israel,11174,6.11
+Brasov,2024,USA,10278,5.62
+Brasov,2024,United Kingdom,10220,5.59
+Brasov,2024,Spain,8590,4.7
+Brasov,2024,Poland,8500,4.65
+Brasov,2024,Hungary,8306,4.54
+Brasov,2024,France,7327,4.01
+Brasov,2024,Ukraine,6902,3.77
+Brasov,2024,Moldova,6624,3.62
+Brasov,2024,Bulgaria,6336,3.47
+Brasov,2024,Turkey,4446,2.43
+Brasov,2024,Greece,3996,2.19
+Brasov,2024,Netherlands,3956,2.16
+Brasov,2024,Austria,3536,1.93
+Brasov,2024,China,2580,1.41
+Brasov,2024,Serbia,2550,1.39
+Brasov,2024,Belgium,2335,1.28
+Brasov,2024,Switzerland,2100,1.15
+Brasov,2025,Other countries,35957,17.83
+Brasov,2025,Germany,25968,12.87
+Brasov,2025,Italy,16911,8.38
+Brasov,2025,Israel,13722,6.8
+Brasov,2025,USA,11381,5.64
+Brasov,2025,United Kingdom,11316,5.61
+Brasov,2025,Spain,9512,4.72
+Brasov,2025,Poland,9412,4.67
+Brasov,2025,Hungary,9197,4.56
+Brasov,2025,France,8113,4.02
+Brasov,2025,Ukraine,7643,3.79
+Brasov,2025,Moldova,7334,3.64
+Brasov,2025,Bulgaria,7016,3.48
+Brasov,2025,Turkey,4923,2.44
+Brasov,2025,Greece,4425,2.19
+Brasov,2025,Netherlands,4381,2.17
+Brasov,2025,Austria,3915,1.94
+Brasov,2025,China,2857,1.42
+Brasov,2025,Serbia,2824,1.4
+Brasov,2025,Belgium,2586,1.28
+Brasov,2025,Switzerland,2325,1.15
+Sibiu,2020,Other countries,3558,17.03
+Sibiu,2020,Germany,3416,16.34
+Sibiu,2020,Italy,1661,7.95
+Sibiu,2020,Israel,1459,6.98
+Sibiu,2020,USA,1126,5.39
+Sibiu,2020,United Kingdom,1120,5.36
+Sibiu,2020,Spain,941,4.5
+Sibiu,2020,Poland,931,4.46
+Sibiu,2020,Hungary,910,4.36
+Sibiu,2020,France,803,3.84
+Sibiu,2020,Ukraine,756,3.62
+Sibiu,2020,Moldova,726,3.47
+Sibiu,2020,Bulgaria,694,3.32
+Sibiu,2020,Turkey,487,2.33
+Sibiu,2020,Greece,438,2.1
+Sibiu,2020,Netherlands,434,2.07
+Sibiu,2020,Austria,387,1.85
+Sibiu,2020,China,283,1.35
+Sibiu,2020,Serbia,279,1.34
+Sibiu,2020,Belgium,256,1.22
+Sibiu,2020,Switzerland,230,1.1
+Sibiu,2021,Germany,10901,19.41
+Sibiu,2021,Other countries,9338,16.63
+Sibiu,2021,Italy,4493,8.0
+Sibiu,2021,Israel,3083,5.49
+Sibiu,2021,USA,2956,5.26
+Sibiu,2021,United Kingdom,2939,5.23
+Sibiu,2021,Spain,2470,4.4
+Sibiu,2021,Poland,2444,4.35
+Sibiu,2021,Hungary,2388,4.25
+Sibiu,2021,France,2107,3.75
+Sibiu,2021,Ukraine,1985,3.53
+Sibiu,2021,Moldova,1905,3.39
+Sibiu,2021,Bulgaria,1822,3.24
+Sibiu,2021,Turkey,1278,2.28
+Sibiu,2021,Greece,1149,2.05
+Sibiu,2021,Netherlands,1138,2.03
+Sibiu,2021,Austria,1017,1.81
+Sibiu,2021,China,742,1.32
+Sibiu,2021,Serbia,733,1.31
+Sibiu,2021,Belgium,672,1.2
+Sibiu,2021,Switzerland,604,1.08
+Sibiu,2022,Germany,15281,17.0
+Sibiu,2022,Other countries,14898,16.57
+Sibiu,2022,Israel,7972,8.87
+Sibiu,2022,Italy,6505,7.24
+Sibiu,2022,USA,4715,5.25
+Sibiu,2022,United Kingdom,4689,5.22
+Sibiu,2022,Spain,3941,4.38
+Sibiu,2022,Poland,3900,4.34
+Sibiu,2022,Hungary,3811,4.24
+Sibiu,2022,France,3362,3.74
+Sibiu,2022,Ukraine,3167,3.52
+Sibiu,2022,Moldova,3039,3.38
+Sibiu,2022,Bulgaria,2907,3.23
+Sibiu,2022,Turkey,2040,2.27
+Sibiu,2022,Greece,1833,2.04
+Sibiu,2022,Netherlands,1815,2.02
+Sibiu,2022,Austria,1622,1.8
+Sibiu,2022,China,1184,1.32
+Sibiu,2022,Serbia,1170,1.3
+Sibiu,2022,Belgium,1071,1.19
+Sibiu,2022,Switzerland,963,1.07
+Sibiu,2023,Other countries,21712,17.07
+Sibiu,2023,Germany,20475,16.1
+Sibiu,2023,Italy,10578,8.32
+Sibiu,2023,Israel,8527,6.7
+Sibiu,2023,USA,6872,5.4
+Sibiu,2023,United Kingdom,6833,5.37
+Sibiu,2023,Spain,5744,4.52
+Sibiu,2023,Poland,5683,4.47
+Sibiu,2023,Hungary,5553,4.37
+Sibiu,2023,France,4899,3.85
+Sibiu,2023,Ukraine,4615,3.63
+Sibiu,2023,Moldova,4429,3.48
+Sibiu,2023,Bulgaria,4236,3.33
+Sibiu,2023,Turkey,2972,2.34
+Sibiu,2023,Greece,2672,2.1
+Sibiu,2023,Netherlands,2645,2.08
+Sibiu,2023,Austria,2364,1.86
+Sibiu,2023,China,1725,1.36
+Sibiu,2023,Serbia,1705,1.34
+Sibiu,2023,Belgium,1561,1.23
+Sibiu,2023,Switzerland,1404,1.1
+Sibiu,2024,Other countries,25099,17.35
+Sibiu,2024,Germany,22599,15.62
+Sibiu,2024,Italy,12171,8.41
+Sibiu,2024,Israel,8637,5.97
+Sibiu,2024,USA,7944,5.49
+Sibiu,2024,United Kingdom,7899,5.46
+Sibiu,2024,Spain,6640,4.59
+Sibiu,2024,Poland,6570,4.54
+Sibiu,2024,Hungary,6420,4.44
+Sibiu,2024,France,5663,3.91
+Sibiu,2024,Ukraine,5335,3.69
+Sibiu,2024,Moldova,5120,3.54
+Sibiu,2024,Bulgaria,4897,3.38
+Sibiu,2024,Turkey,3436,2.37
+Sibiu,2024,Greece,3089,2.13
+Sibiu,2024,Netherlands,3058,2.11
+Sibiu,2024,Austria,2733,1.89
+Sibiu,2024,China,1994,1.38
+Sibiu,2024,Serbia,1971,1.36
+Sibiu,2024,Belgium,1805,1.25
+Sibiu,2024,Switzerland,1623,1.12
+Sibiu,2025,Other countries,28953,17.44
+Sibiu,2025,Germany,24545,14.78
+Sibiu,2025,Italy,13617,8.2
+Sibiu,2025,Israel,11050,6.65
+Sibiu,2025,USA,9164,5.52
+Sibiu,2025,United Kingdom,9112,5.49
+Sibiu,2025,Spain,7659,4.61
+Sibiu,2025,Poland,7579,4.56
+Sibiu,2025,Hungary,7406,4.46
+Sibiu,2025,France,6533,3.93
+Sibiu,2025,Ukraine,6154,3.71
+Sibiu,2025,Moldova,5906,3.56
+Sibiu,2025,Bulgaria,5649,3.4
+Sibiu,2025,Turkey,3964,2.39
+Sibiu,2025,Greece,3563,2.15
+Sibiu,2025,Netherlands,3527,2.12
+Sibiu,2025,Austria,3153,1.9
+Sibiu,2025,China,2300,1.39
+Sibiu,2025,Serbia,2274,1.37
+Sibiu,2025,Belgium,2082,1.25
+Sibiu,2025,Switzerland,1872,1.13

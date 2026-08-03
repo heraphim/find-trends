@@ -69,17 +69,21 @@ were used), `google-maps-stats.csv`, and `*-places.csv` (malls/recreation/touris
 `~`-prefixed when approximate and only recorded with a cited source. Reference material for a possible
 future business/foot-traffic layer — if it ever feeds the app it needs reshaping + a refresh story.
 
-### `research/tourism/` — tourist provenience (origin) data & estimates
+### `research/tourism/` — tourist provenience (origin) data & estimates, 2020–2025
 
 Where tourists come from. **Key limitation:** INS publishes foreign arrivals *by country of origin*
-**only nationally** (Tempo `TUR104A`/`TUR104B`, monthly); at county level (`TUR104F`) Brașov/Sibiu split
+**only nationally** (annual press releases; **no** by-country Tempo matrix for accommodation — the
+`TUR107C` border series is discontinued/empty); at county level (`TUR104F`, monthly) Brașov/Sibiu split
 only Romanian-vs-foreign **total**, never per country — so a `city × country` table doesn't exist
-officially and is **modelled** here. Files: `romania-arrivals-by-country-2025.csv` (**real** national
-top-20), `city-arrivals-totals.csv` (**real** Brașov/Sibiu/Romania totals — Brașov skews *domestic* at
-14.5% foreign, Sibiu skews *international* at ~25%), `estimate_city_provenance.py` (reproducible model:
-locals=locals, national-proportion mix, per-city **German uplift** for the Saxon heritage, ×real foreign
-total) → `estimated-city-by-country-2025.csv` (**ESTIMATE**). Annual only; monthly needs a Tempo `TUR104F`
-county pull first (see the folder README).
+officially and is **modelled** here. **REAL** files: `city-arrivals-monthly.csv` (Tempo TUR104F, both
+cities, monthly RO/foreign, Jan 2020–Dec 2025, pulled by `fetch_tempo.py` off the `statistici.insse.ro:8077`
+REST API), `city-arrivals-annual.csv` (roll-up — Brașov skews *domestic*, foreign share 3.7%→14.5% over
+2020–25; Sibiu skews *international*, 8%→27.3%), `romania-foreign-by-country.csv` (national by-country per
+year — full top-20 for 2025, top-3/5 for 2020–24), `romania-annual-totals.csv`. **ESTIMATE:**
+`estimate_city_provenance.py` (locals=locals, national-proportion mix with per-year top-3 override, per-city
+**German uplift** for the Saxon heritage, ×real foreign total) → `estimated-city-by-country.csv` (city ×
+year × country). Monthly by-country would split the annual estimate by the real monthly foreign curve — see
+the folder README.
 
 ## App architecture
 

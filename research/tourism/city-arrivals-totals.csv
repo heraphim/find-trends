@@ -1,5 +1,0 @@
-area,year,scope,arrivals_total,arrivals_romanian,arrivals_foreign,foreign_share_pct,overnight_stays,note,source
-Romania,2025,national,13900000,~11315000,~2585000,18.6,,"foreign share 18.6% (INS); ~2.585M foreign = 18.6% x 13.9M. NB an alt ""classic-structures"" total of ~10.95M is also quoted elsewhere",economica.net / romanialibera.ro (INS 2025)
-Brasov (judet),2025,county,1389000,1187281,201719,14.5,2618000,"foreign +10% YoY; decline was domestic (-10.4%); Brasov = 10.0% of national arrivals, rank 3",bizbrasov.ro (INS 2025)
-Sibiu (judet),2025,county,~591410,441410,~150000,~25.4,,"~150k foreign (near 2019's ~165k); strongly seasonal (Jul/Aug peak + Dec Christmas market)",oradesibiu.ro / tribuna.ro (INS 2025)
-Sibiu (judet),2019,county,,,~165000,,,"pre-pandemic foreign baseline, for reference",oradesibiu.ro (INS)

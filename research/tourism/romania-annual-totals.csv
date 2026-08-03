@@ -1,0 +1,7 @@
+year,national_arrivals_total,foreign_pct,national_foreign_total,source
+2020,~6335000,~5.8,~367000,"INS (approx: 2020 back-derived from 2021 +46.4%; foreign total modelled from top-5)"
+2021,9276000,9.1,844116,"INS annual 2021 (agerpres)"
+2022,11299100,14.0,1581874,"INS annual 2022 (news.ro)"
+2023,13650000,15.4,2102100,"INS annual 2023 (84.6% Romanian)"
+2024,14263000,16.7,2381921,"INS annual 2024 (news.ro; ~2.4M foreign)"
+2025,13900000,18.6,2585000,"INS annual 2025 (economica/mediafax)"
