@@ -70,6 +70,7 @@ click a point → focus events), `EventsPanel`, `BuildInfo`, `ThemeToggle`.
 
 - **Sales CSV upload + comparison** (aligned time-series, scatter + r, correlation ranking) — the main goal, blocked on a sample sales file.
 - **Event overlays** on the chart from day-classifier columns (`season`, `nice_day_label`, `weather_code`, etc.).
+- **Incremental data refresh (deferred, revisit when events get heavy):** the nightly `refresh-data.yml` currently *full-regenerates* every CSV from 2020 — deliberately, because that keeps each CSV a pure, self-healing output and survives schema changes (see the v2-score additions). Decided against incremental for the current lightweight sources. **When the planned heavy events pipeline lands** (large/slow to rebuild, or rate-limited), switch that source to a **trailing-window** refresh: freeze old history, re-fetch only the last ~14–30 days, merge, and recompute any `change_pct`/forward-fill across the seam — while **keeping a `--full` rebuild mode** for schema changes and repair. Weather already does this (`FORECAST_PAST_DAYS = 14`); BNR ships a `nbrfxrates10days.xml` top-up primitive. Trigger to act: the cron starts failing on runtime or rate limits.
 
 ### TODO — user suggestions, ASK the user for direction before building
 
