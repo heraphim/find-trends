@@ -1079,45 +1079,7 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Cities → categories bar → day filters, stacked above the chart */}
-      <CityControls
-        cities={discovery.model.cities}
-        included={includedCities}
-        overlap={overlap}
-        onToggleCity={toggleCity}
-        onToggleOverlap={() => setOverlap((o) => !o)}
-      />
-
-      <CategoryBar
-        categories={categories}
-        isSelected={isColSelected}
-        selectedCount={selectedCount}
-        onToggleColumn={toggleColumn}
-        onOpenCategory={onOpenCategory}
-        eventSources={eventSources}
-        onToggleEventSource={toggleEventSource}
-      />
-
-      {dayAttributes && (
-        <DayFilters
-          dimensions={dayAttributes.dimensions}
-          state={filterState}
-          onToggle={toggleFilterValue}
-        />
-      )}
-
-      <SalesPanel
-        datasets={salesDatasets}
-        selections={salesSelections}
-        includedCities={includedCities}
-        onUpload={handleUploadSales}
-        onToggle={toggleSalesMetric}
-        onRemove={removeSalesDataset}
-      />
-
-      <SalesSummaryPanel datasets={checkedDatasets.filter((d) => d.summary)} onJumpToDay={jumpToDay} />
-
-      {/* Chart area (full width) */}
+      {/* Chart area — full width (spans the page), moved above the controls */}
       <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:p-5 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -1320,6 +1282,46 @@ export function Dashboard() {
         )}
       </section>
 
+      {/* Controls + panels, centered beneath the full-width chart */}
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+      {/* Cities → categories bar → day filters */}
+      <CityControls
+        cities={discovery.model.cities}
+        included={includedCities}
+        overlap={overlap}
+        onToggleCity={toggleCity}
+        onToggleOverlap={() => setOverlap((o) => !o)}
+      />
+
+      <CategoryBar
+        categories={categories}
+        isSelected={isColSelected}
+        selectedCount={selectedCount}
+        onToggleColumn={toggleColumn}
+        onOpenCategory={onOpenCategory}
+        eventSources={eventSources}
+        onToggleEventSource={toggleEventSource}
+      />
+
+      {dayAttributes && (
+        <DayFilters
+          dimensions={dayAttributes.dimensions}
+          state={filterState}
+          onToggle={toggleFilterValue}
+        />
+      )}
+
+      <SalesPanel
+        datasets={salesDatasets}
+        selections={salesSelections}
+        includedCities={includedCities}
+        onUpload={handleUploadSales}
+        onToggle={toggleSalesMetric}
+        onRemove={removeSalesDataset}
+      />
+
+      <SalesSummaryPanel datasets={checkedDatasets.filter((d) => d.summary)} onJumpToDay={jumpToDay} />
+
       {/* Selected-day stats — per-city weather + sales for a clicked point */}
       {focusedRange && dayCityColumns.length > 0 && (
         <DayStatsCard
@@ -1346,6 +1348,7 @@ export function Dashboard() {
         focused={focusedRange !== null}
         onClear={() => setFocusedT(null)}
       />
+      </div>
     </div>
   )
 }
