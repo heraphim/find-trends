@@ -3,6 +3,7 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
+  Customized,
   Legend,
   Line,
   ReferenceArea,
@@ -54,6 +55,66 @@ interface Props {
 // A marker's stable key (must match the event legend's key).
 function markerKey(m: EventMarker): string {
   return `${m.startLabel}|${m.endLabel}`
+}
+
+// Recharts injects these into a <Customized> child (band/point scale + plot rect).
+interface CustomizedProps {
+  xAxisMap?: Record<string, { scale?: unknown }>
+  offset?: { top?: number; left?: number; width?: number; height?: number }
+}
+type BandScale = ((v: string) => number | undefined) & {
+  domain?: () => string[]
+  bandwidth?: () => number
+}
+
+// Short vertical notches at the TOP and BOTTOM edges marking each time-unit
+// boundary. Unlike the full-height gridlines (suppressed when dense), these stay
+// on at any density — thinned when boundaries would overlap — so the day/week/
+// month/year limits are always readable. Drawn via <Customized> so we can read
+// the category scale and plot rectangle straight from Recharts.
+const NOTCH = 6 // px
+function makeUnitTicks(tickColor: string) {
+  return function UnitTicks(props: CustomizedProps) {
+    const { xAxisMap, offset } = props
+    if (!xAxisMap || !offset) return null
+    const axis = xAxisMap[Object.keys(xAxisMap)[0]]
+    const scale = axis?.scale as BandScale | undefined
+    if (!scale || typeof scale !== 'function' || !scale.domain) return null
+    const labels = scale.domain()
+    if (labels.length === 0) return null
+    const band = scale.bandwidth ? scale.bandwidth() : 0
+
+    // Unit boundaries in px: band scale → band edges; point scale → midpoints.
+    let edges: number[]
+    if (band > 0) {
+      edges = labels.map((l) => scale(l) ?? 0)
+      edges.push((scale(labels[labels.length - 1]) ?? 0) + band)
+    } else {
+      const c = labels.map((l) => scale(l) ?? 0).sort((a, b) => a - b)
+      const g0 = c.length > 1 ? c[1] - c[0] : 40
+      const gN = c.length > 1 ? c[c.length - 1] - c[c.length - 2] : 40
+      edges = [c[0] - g0 / 2, ...c.slice(1).map((x, i) => (c[i] + x) / 2), c[c.length - 1] + gN / 2]
+    }
+
+    const top = offset.top ?? 0
+    const h = offset.height ?? 0
+    const w = offset.width ?? 0
+    const spacing = edges.length > 1 ? w / (edges.length - 1) : w
+    const step = spacing > 0 && spacing < 6 ? Math.ceil(6 / spacing) : 1
+
+    return (
+      <g pointerEvents="none">
+        {edges.map((x, i) =>
+          i % step === 0 || i === edges.length - 1 ? (
+            <g key={i}>
+              <line x1={x} x2={x} y1={top} y2={top + NOTCH} stroke={tickColor} strokeWidth={1} strokeOpacity={0.7} />
+              <line x1={x} x2={x} y1={top + h - NOTCH} y2={top + h} stroke={tickColor} strokeWidth={1} strokeOpacity={0.7} />
+            </g>
+          ) : null,
+        )}
+      </g>
+    )
+  }
 }
 
 // Sales bars sit in the lower band of the plot: give them a dedicated (hidden)
@@ -210,6 +271,9 @@ export function MultiTrendChart({
   const barIds = bars.map((s) => s.id)
   const labelById = new Map(allSeries.map((s) => [s.id, s.label]))
   const barDomain = salesDomain(data, barIds)
+  // No line/bar series (e.g. an events-only chart): the main y-axis has nothing
+  // to scale, so pin it to a dummy domain and hide it — markers are x-only.
+  const emptyChart = series.length === 0 && bars.length === 0
 
   // Legend hover → "glow" the hovered series (emphasise it, dim the rest).
   const [hoveredSeries, setHoveredSeries] = useState<string | null>(null)
@@ -277,6 +341,8 @@ export function MultiTrendChart({
           {/* Vertical lines delimit each time unit; suppressed when dense to avoid
               a wall of lines (the hover band still highlights units at any density). */}
           <CartesianGrid stroke={colors.grid} vertical={data.length <= 60} />
+          {/* Always-on top/bottom notches delimiting each time unit. */}
+          <Customized component={makeUnitTicks(colors.axis)} />
           {dragging && drag && (
             <ReferenceArea
               x1={data[Math.min(drag.startIdx, drag.endIdx)].label}
@@ -298,6 +364,8 @@ export function MultiTrendChart({
             tick={{ fill: colors.axis, fontSize: 12 }}
             tickMargin={8}
             width={56}
+            hide={emptyChart}
+            domain={emptyChart ? [0, 1] : undefined}
             axisLine={false}
             tickLine={false}
             tickFormatter={(v: number) =>

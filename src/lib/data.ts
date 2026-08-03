@@ -120,6 +120,27 @@ export function bucketRow(date: Date, g: Granularity): { t: number; label: strin
   return { t: date.getTime(), label: axisLabel(date, g), full: tooltipLabel(date, g) }
 }
 
+// An empty chart dataset: one header row per bucket spanning [range], so a chart
+// (and its time axis) can render with NO series — e.g. an events-only view whose
+// only content is event markers, which need a time axis to anchor to.
+export function bucketSkeleton(range: DateRange, g: Granularity): ChartRow[] {
+  if (g === 'all') return [bucketRow(bucketStart(range.start, g), g)]
+  const out: ChartRow[] = []
+  let cur = bucketStart(range.start, g)
+  const endT = range.end.getTime()
+  for (let guard = 0; cur.getTime() <= endT && guard < 6000; guard++) {
+    out.push(bucketRow(cur, g))
+    const y = cur.getFullYear()
+    const m = cur.getMonth()
+    const d = cur.getDate()
+    if (g === 'day') cur = new Date(y, m, d + 1)
+    else if (g === 'week') cur = new Date(y, m, d + 7)
+    else if (g === 'month') cur = new Date(y, m + 1, 1)
+    else cur = new Date(y + 1, 0, 1) // year
+  }
+  return out
+}
+
 // Union two ChartRow arrays by bucket time, merging their series keys onto one
 // row per bucket. Existing label/full/_days on `a` win; `b` only contributes its
 // own series values (it never carries `a`'s keys), so line + bar datasets that

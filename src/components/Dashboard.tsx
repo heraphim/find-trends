@@ -3,6 +3,7 @@ import { fetchSheetData } from '../lib/sheet'
 import {
   aggregateMerged,
   bucketDates,
+  bucketSkeleton,
   bucketStart,
   bucketToRange,
   mergeRowsByT,
@@ -878,8 +879,25 @@ export function Dashboard() {
     [markerEvents, granularity],
   )
 
+  // Events can drive the chart alone: with no metric/sales series but events in
+  // range, render a skeleton time axis so their markers have something to sit on.
+  const eventsActive = eventSources.size > 0 && markerEvents.length > 0
+
   const chartGroups = useMemo<ChartGroup[]>(() => {
-    if (series.length === 0 && salesSeriesIds.length === 0) return []
+    if (series.length === 0 && salesSeriesIds.length === 0) {
+      if (eventsActive)
+        return [
+          {
+            key: 'events',
+            title: null,
+            series: [],
+            barSeries: [],
+            data: bucketSkeleton(activeRange, granularity),
+            correlations: [],
+          },
+        ]
+      return []
+    }
     if (overlap) return [makeGroup('all', null, series, salesDatasets.filter(datasetVisible))]
 
     const groups: ChartGroup[] = []
@@ -897,7 +915,7 @@ export function Dashboard() {
     const globalSeries = series.filter((s) => parseTabName(s.sheet).city === null)
     if (globalSeries.length) groups.push(makeGroup('__global__', 'Markets', globalSeries, []))
     return groups
-  }, [series, salesSeriesIds, salesDatasets, salesSelections, overlap, makeGroup, discovery, includedCities, datasetVisible])
+  }, [series, salesSeriesIds, salesDatasets, salesSelections, overlap, makeGroup, discovery, includedCities, datasetVisible, eventsActive, activeRange, granularity])
 
   if (discovery.status === 'loading') {
     return <div className="py-20 text-center text-slate-400">Loading workbook…</div>
@@ -1077,7 +1095,7 @@ export function Dashboard() {
             </div>
           )}
 
-          {series.length === 0 && salesSeriesIds.length === 0 ? (
+          {series.length === 0 && salesSeriesIds.length === 0 && !eventsActive ? (
             <div className="flex h-72 items-center justify-center rounded-xl border border-dashed border-slate-300 px-6 text-center text-sm text-slate-400 dark:border-slate-700">
               Pick metrics from the categories — or upload a sales file — to plot them.
             </div>
