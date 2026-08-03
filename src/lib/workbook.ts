@@ -1,31 +1,15 @@
-import { unzipSync, strFromU8 } from 'fflate'
-import { SHEET_ID } from './sheet'
+// Ordered list of tab names, from the static manifest in public/data/.
+// (Cell data is loaded per-tab as CSV; see sheet.ts.)
+const MANIFEST_URL = `${import.meta.env.BASE_URL}data/tabs.json`
 
-const XLSX_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=xlsx`
-
-function decodeXmlEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-}
-
-// Fetch the workbook and read the ordered list of tab names from workbook.xml.
-// (We only parse the tiny workbook.xml — cell data is loaded per-sheet as CSV.)
 export async function discoverTabNames(): Promise<string[]> {
-  const res = await fetch(XLSX_URL)
-  if (!res.ok) throw new Error(`Could not read the workbook (HTTP ${res.status}).`)
-  const buf = new Uint8Array(await res.arrayBuffer())
-  const files = unzipSync(buf, { filter: (f) => f.name === 'xl/workbook.xml' })
-  const xml = strFromU8(files['xl/workbook.xml'] ?? new Uint8Array())
-
-  const names: string[] = []
-  for (const m of xml.matchAll(/<sheet\b[^>]*\bname="([^"]*)"/g)) {
-    names.push(decodeXmlEntities(m[1]))
+  const res = await fetch(MANIFEST_URL)
+  if (!res.ok) throw new Error(`Could not read the data manifest (HTTP ${res.status}).`)
+  const names = (await res.json()) as unknown
+  if (!Array.isArray(names) || names.some((n) => typeof n !== 'string')) {
+    throw new Error('Data manifest is malformed (expected a list of tab names).')
   }
-  return names
+  return names as string[]
 }
 
 export interface ParsedTab {

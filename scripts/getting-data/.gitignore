@@ -1,0 +1,3 @@
+# Intermediate generator output — only the published copies in public/data/ are tracked.
+*.csv
+__pycache__/

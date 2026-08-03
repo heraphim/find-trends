@@ -3,6 +3,12 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  # Redeploy after the daily data refresh commits new CSVs. (A push made by the
+  # refresh workflow's GITHUB_TOKEN can't trigger this workflow directly, so we
+  # chain off its completion instead.)
+  workflow_run:
+    workflows: ['Refresh data']
+    types: [completed]
   workflow_dispatch: # allows manual runs from the Actions tab
 
 # Permissions the GITHUB_TOKEN needs to publish Pages
@@ -19,6 +25,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Skip when the daily refresh failed; still run for push / manual dispatch.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
