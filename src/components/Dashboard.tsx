@@ -823,6 +823,25 @@ export function Dashboard() {
     () => (matchingDays ? bucketDates(matchingDays, granularity) : null),
     [matchingDays, granularity],
   )
+
+  // Empty header rows for every in-range bucket that passes the day filters, so a
+  // chart's time axis spans the whole selected range even when the only content
+  // is sparse (sales bars land on sale days only; event markers must anchor to a
+  // bucket). Mirrors buildData's filter logic: allowedDates === null means no day
+  // filter, so every calendar bucket in range is present.
+  const rangeSkeleton = useMemo<ChartRow[]>(() => {
+    if (!allowedDates) return bucketSkeleton(activeRange, granularity)
+    const map = new Map<number, ChartRow>()
+    const startT = activeRange.start.getTime()
+    const endT = activeRange.end.getTime()
+    for (const epoch of allowedDates) {
+      if (epoch < startT || epoch > endT) continue
+      const bs = bucketStart(new Date(epoch), granularity)
+      const t = bs.getTime()
+      if (!map.has(t)) map.set(t, bucketRow(bs, granularity))
+    }
+    return [...map.values()].sort((a, b) => a.t - b.t)
+  }, [allowedDates, activeRange, granularity])
   const totalMatchingDays = matchingDays?.length ?? null
 
   // Attach each bucket's matching-day count so the tooltip can report it.
@@ -844,10 +863,14 @@ export function Dashboard() {
       const correlations = seriesCorrelations(mergeRowsByT(lineActual, sales.rows), [...specs, ...amountBars])
       const displayLine =
         scaleMode === 'percent' ? rebaseToPercent(lineActual, specs.map((s) => s.id)) : lineActual
-      const data = withDayCounts(mergeRowsByT(displayLine, sales.rows))
+      // Start from the range skeleton so the time axis is complete even when the
+      // only series is sparse sales bars — otherwise event markers (and the axis
+      // itself) would collapse to just the days that happened to have a sale.
+      const merged = mergeRowsByT(displayLine, sales.rows)
+      const data = withDayCounts(mergeRowsByT(rangeSkeleton, merged))
       return { key, title, series: specs, barSeries: sales.series, data, correlations }
     },
-    [withDayCounts, buildData, scaleMode, salesSelections, activeRange, allowedDates, granularity],
+    [withDayCounts, buildData, scaleMode, salesSelections, activeRange, allowedDates, granularity, rangeSkeleton],
   )
 
   // A change of range/granularity invalidates the clicked bucket — EXCEPT a
