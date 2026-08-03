@@ -1,0 +1,57 @@
+name,category,subcategory,area,notes
+Piata Mare (Large Square),City Center Landmark,Square,Old Town,Main historic square of Sibiu
+Piata Mica (Small Square),City Center Landmark,Square,Old Town,Second historic square with arcaded houses
+Piata Huet,City Center Landmark,Square,Old Town,Gothic square around the Evangelical Cathedral
+Turnul Sfatului (Council Tower),City Center Landmark,Tower,Old Town,Landmark tower between the two main squares
+Podul Minciunilor (Bridge of Lies),City Center Landmark,Bridge,Old Town,Iconic cast-iron footbridge
+Catedrala Evanghelica (Lutheran Cathedral),City Center Landmark,Church,Piata Huet,Gothic Evangelical cathedral with a tall tower
+Catedrala Sfanta Treime (Orthodox Cathedral),City Center Landmark,Church,Str. Mitropoliei,Large Orthodox metropolitan cathedral
+Strada Nicolae Balcescu,City Center Landmark,Pedestrian street,Old Town,Main pedestrian promenade with shops and cafes
+Pasajul Scarilor (Stairs Passage),City Center Landmark,Historic passage,Old Town,Medieval stairway linking upper and lower town
+Turnul Scarilor,City Center Landmark,Tower/gate,Old Town,Historic staircase tower
+Muzeul National Brukenthal,City Center Business,Museum,Piata Mare,National art museum in the Brukenthal Palace
+Crama Sibiul Vechi,City Center Business,Restaurant,Old Town,Traditional Romanian cellar restaurant
+Kulinarium,City Center Business,Restaurant,Piata Mica,Well-known central restaurant
+Restaurant Hermania,City Center Business,Restaurant,Old Town,Central restaurant
+Pardon Cafe & Bistro,City Center Business,Restaurant/Cafe,Old Town,Popular bistro and cafe
+La Turn,City Center Business,Restaurant,Piata Mare,Restaurant next to the Council Tower
+Cafe Wien,City Center Business,Cafe,Old Town,Viennese-style cafe
+Arhitectilor Cafe,City Center Business,Cafe,Piata Mica,Cafe under the arcades of the Small Square
+Music Pub,City Center Business,Pub,Piata Mica,Long-running central pub
+Bohemian Flow Art Cafe,City Center Business,Cafe/Bar,Old Town,Arts cafe and bar
+Hotel Continental Forum Sibiu,City Center Business,Hotel,Central,Large city-center hotel
+Hotel Imparatul Romanilor,City Center Business,Hotel,Str. Nicolae Balcescu 4,Historic hotel (inn on site since 1555); described as oldest operating hotel in Romania
+Ramada Sibiu,City Center Business,Hotel,Central,International chain hotel
+Hotel Am Ring,City Center Business,Hotel,Piata Mare,Boutique hotel on the main square
+Casa Luxemburg,City Center Business,Hotel,Piata Mica,Boutique hotel on the Small Square
+Golden Tulip Ana Tower Sibiu,City Center Business,Hotel,Central,High-rise chain hotel
+Shopping City Sibiu,Mall,Shopping mall,West (Calea Surii Mici),One of Romania's largest malls; Auchan/Carrefour/Decathlon anchors
+Promenada Sibiu,Mall,Shopping mall,Selimbar (DN1),Modern mall just outside the city with cinema
+Kaufland (multiple),Mall,Hypermarket/retail,Various,Hypermarket chain locations across the city
+Dedeman / Retail parks,Mall,Retail park,Various,DIY and big-box retail parks
+Parcul Sub Arini,Recreational Facility,Park,Central,Large historic city park
+Gradina Zoologica Sibiu (Zoo),Recreational Facility,Zoo,Dumbrava,City zoo in the Dumbrava forest
+Muzeul ASTRA (Open-Air Museum),Recreational Facility,Open-air museum,Dumbrava,One of Europe's largest open-air ethnographic museums
+Padurea Dumbrava,Recreational Facility,Forest/park,Dumbrava (~4 km),Forest recreation area with a lake and trails
+Arena Platos Paltinis,Recreational Facility,Ski resort,Paltinis (~35 km),Ski slopes and winter sports arena
+Ocna Sibiului (salt lakes),Recreational Facility,Spa/bathing,Ocna Sibiului (~15 km),Salt lakes and open-air bathing resort
+Paltinis,Touristic Area,Mountain resort,Paltinis (~35 km),Oldest mountain resort in Romania; hiking and skiing
+Transfagarasan,Touristic Area,Scenic road,South (~60+ km),Famous high-altitude mountain road
+Balea Lac (Balea Lake),Touristic Area,Glacial lake,Fagaras Mountains,Glacial lake reached by Transfagarasan or cable car
+Transalpina,Touristic Area,Scenic road,South-west,High-altitude alpine road
+Cisnadie,Touristic Area,Town/fortified church,Cisnadie (~10 km),Saxon town with a fortified church
+Cisnadioara,Touristic Area,Village/fortress,Cisnadioara (~12 km),Hilltop Romanesque fortress church
+Rasinari,Touristic Area,Traditional village,Rasinari (~12 km),Ethnographic village in Marginimea Sibiului
+Sibiel,Touristic Area,Village/museum,Sibiel (~25 km),Village with a famous glass-icon museum
+Marginimea Sibiului,Touristic Area,Ethnographic region,West of Sibiu,Cluster of traditional Saxon/Romanian villages
+Biserica Fortificata Valea Viilor,Touristic Area,Fortified church,Valea Viilor (~25 km),UNESCO fortified Saxon church
+Biserica Fortificata Biertan,Touristic Area,Fortified church,Biertan (~80 km),UNESCO fortified Saxon church
+Palatul Brukenthal Avrig,Touristic Area,Palace/gardens,Avrig (~25 km),Baron Brukenthal's summer palace and gardens
+Muntii Cindrel (Cindrel Mountains),Touristic Area,Mountains/Natural park,SW of Sibiu (~30 km),"Range above Paltinis; Cindrel Nature Park, hiking, glacial lakes"
+Arena Platos Paltinis,Recreational Facility,Ski resort,Paltinis (~35 km),Ski slopes and winter-sports arena above Sibiu
+Transalpina Ski Resort,Touristic Area,Ski resort,Obarsia Lotrului (~60 km),Ski area on the Transalpina road
+Iezerele Cindrelului,Touristic Area,Glacial lakes,Cindrel Mountains,Glacial lakes and nature reserve in the Cindrel range
+Muntii Fagaras,Touristic Area,Mountains,SE of Sibiu,Highest range in Romania; reached via the Transfagarasan
+Muntii Lotru,Touristic Area,Mountains,SW of Sibiu,High range along the Transalpina
+Cheile Cibinului (Cibin Gorge),Touristic Area,Natural attraction,SW of Sibiu (~30 km),Limestone gorge on the Cibin river
+Rezervatia Dumbrava Sibiului,Recreational Facility,Nature reserve,Dumbrava (~4 km),Protected forest with the zoo and ASTRA open-air museum

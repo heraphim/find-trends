@@ -52,6 +52,20 @@ Presentation — a column's **display name** and whether it **shows in the app**
 - Rule of thumb: v2 scores are `primary`, v1 scores `advanced`; raw components (`apparent_temp_*`, `rain`, `wind_mean`, `*_change_pct`) `advanced`; headline series (`temp_mean`, `precipitation`, `*_close`, `eur_ron`, `nice_day_score_v2`) `primary`.
 - Unregistered columns fall back to `advanced` + raw-key label and log a dev-only `console.warn` — so nothing silently vanishes, but the warning is the signal to add an entry. The `days` sheet is exempt (it feeds `DayFilters`, not chart metrics, and has its own labelling there).
 
+## Research data (`research/` — offline, not loaded by the app)
+
+`research/` holds hand-curated, **web-researched reference CSVs** about businesses and places in the
+**Brașov and Sibiu** city centres — compiled to explore the end-goal of correlating a shop's activity
+against the trend data. **Not in `tabs.json`, not loaded at runtime, not on any refresh schedule** —
+static snapshots (Aug 2026) that will drift. See `research/README.md` for the per-file schema. Contents:
+city-centre business lists (with `opened`/`closed`, a `date_basis` provenance column, and a
+`replaced_predecessor` "what-replaced-what" timeline), social-media handles + follower counts,
+`company-entities.csv` (trade name → legal SRL + **CUI**), `company-financials.csv` (**ANAF financials in
+RON** — note: listafirme.eu reports EUR mislabeled as RON, so RON sources like quickconta.ro/totalfirme.ro
+were used), `google-maps-stats.csv`, and `*-places.csv` (malls/recreation/touristic/nature). Values are
+`~`-prefixed when approximate and only recorded with a cited source. Reference material for a possible
+future business/foot-traffic layer — if it ever feeds the app it needs reshaping + a refresh story.
+
 ## App architecture
 
 `Dashboard.tsx` owns almost all state and composes everything. Key pieces:
