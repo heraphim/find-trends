@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react'
 import {
+  Bar,
   CartesianGrid,
+  ComposedChart,
   Legend,
   Line,
-  LineChart,
   ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
@@ -39,13 +40,33 @@ const TIER_COLOR: Record<Tier, string> = {
 
 interface Props {
   data: ChartRow[]
-  series: SeriesSpec[]
+  series: SeriesSpec[] // line series (weather / markets)
+  barSeries?: SeriesSpec[] // sales series, drawn as bars anchored to the bottom
   colorById: Record<string, string>
   percent?: boolean
   onPointClick?: (bucketT: number) => void
   eventMarkers?: EventMarker[]
   bucketEvents?: BucketEvent[]
   onZoom?: (startT: number, endT: number) => void
+}
+
+// Sales bars sit in the lower band of the plot: give them a dedicated (hidden)
+// axis whose top is padded well above the data so the tallest bar reaches only
+// ~1/3 of the height, leaving the upper area for the trend lines.
+function salesDomain(data: ChartRow[], barIds: string[]): [number, number] {
+  let min = 0
+  let max = 0
+  for (const r of data) {
+    for (const id of barIds) {
+      const v = r[id]
+      if (typeof v === 'number') {
+        if (v < min) min = v
+        if (v > max) max = v
+      }
+    }
+  }
+  if (min === 0 && max === 0) return [0, 1]
+  return [min, max + (max - min) * 2]
 }
 
 // Read the hovered/active data index out of a recharts mouse-event state.
@@ -97,11 +118,13 @@ function ChartTooltip({
   active,
   payload,
   series,
+  lineIds,
   colors,
   percent,
   bucketEvents,
 }: TooltipInjectedProps & {
-  series: SeriesSpec[]
+  series: SeriesSpec[] // all series (lines + bars) for label/unit lookup
+  lineIds: Set<string> // which ids are % when the % scale is on
   colors: ReturnType<typeof chartColors>
   percent?: boolean
   bucketEvents?: BucketEvent[]
@@ -137,7 +160,9 @@ function ChartTooltip({
             />
             <span style={{ color: colors.inkMuted }}>{labelById.get(p.dataKey) ?? p.dataKey}</span>
             <span className="ml-auto font-semibold tabular-nums">
-              {percent ? fmtPercent(p.value) : fmtValue(p.value, unitById.get(p.dataKey) ?? '')}
+              {percent && lineIds.has(p.dataKey)
+                ? fmtPercent(p.value)
+                : fmtValue(p.value, unitById.get(p.dataKey) ?? '')}
             </span>
           </div>
         ))}
@@ -162,6 +187,7 @@ function ChartTooltip({
 export function MultiTrendChart({
   data,
   series,
+  barSeries,
   colorById,
   percent,
   onPointClick,
@@ -171,7 +197,12 @@ export function MultiTrendChart({
 }: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
-  const labelById = new Map(series.map((s) => [s.id, s.label]))
+  const bars = barSeries ?? []
+  const allSeries = [...series, ...bars]
+  const lineIds = new Set(series.map((s) => s.id))
+  const barIds = bars.map((s) => s.id)
+  const labelById = new Map(allSeries.map((s) => [s.id, s.label]))
+  const barDomain = salesDomain(data, barIds)
   // With few points, draw dots so single/sparse days are visible.
   const showDots = data.length <= 40
 
@@ -201,7 +232,7 @@ export function MultiTrendChart({
       }
     >
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart
+        <ComposedChart
           data={data}
           margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
           onMouseDown={(state: unknown) => {
@@ -281,9 +312,19 @@ export function MultiTrendChart({
                 : v.toLocaleString(undefined, { maximumFractionDigits: 1 })
             }
           />
+          {/* Hidden axis that keeps sales bars in the lower band of the plot. */}
+          {barIds.length > 0 && <YAxis yAxisId="sales" hide domain={barDomain} />}
           <Tooltip
             cursor={{ stroke: colors.axis, strokeDasharray: '3 3' }}
-            content={<ChartTooltip series={series} colors={colors} percent={percent} bucketEvents={bucketEvents} />}
+            content={
+              <ChartTooltip
+                series={allSeries}
+                lineIds={lineIds}
+                colors={colors}
+                percent={percent}
+                bucketEvents={bucketEvents}
+              />
+            }
           />
           <Legend
             formatter={(value: string) => (
@@ -292,6 +333,19 @@ export function MultiTrendChart({
               </span>
             )}
           />
+          {/* Sales bars first, so the trend lines draw on top of them. */}
+          {bars.map((s) => (
+            <Bar
+              key={s.id}
+              yAxisId="sales"
+              dataKey={s.id}
+              name={s.id}
+              fill={colorById[s.id] ?? colors.categorical[0]}
+              fillOpacity={0.5}
+              isAnimationActive={false}
+              maxBarSize={48}
+            />
+          ))}
           {series.map((s) => (
             <Line
               key={s.id}
@@ -306,7 +360,7 @@ export function MultiTrendChart({
               connectNulls
             />
           ))}
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   )

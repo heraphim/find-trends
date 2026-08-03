@@ -107,6 +107,27 @@ function tooltipLabel(d: Date, g: Granularity): string {
   return fullDay.format(d)
 }
 
+// The {t,label,full} header for a bucket, given its start date. Public so other
+// datasets (e.g. uploaded sales) can build ChartRows on the same time axis.
+export function bucketRow(date: Date, g: Granularity): { t: number; label: string; full: string } {
+  return { t: date.getTime(), label: axisLabel(date, g), full: tooltipLabel(date, g) }
+}
+
+// Union two ChartRow arrays by bucket time, merging their series keys onto one
+// row per bucket. Existing label/full/_days on `a` win; `b` only contributes its
+// own series values (it never carries `a`'s keys), so line + bar datasets that
+// share a time axis combine cleanly.
+export function mergeRowsByT(a: ChartRow[], b: ChartRow[]): ChartRow[] {
+  const map = new Map<number, ChartRow>()
+  for (const r of a) map.set(r.t, { ...r })
+  for (const r of b) {
+    const ex = map.get(r.t)
+    if (ex) Object.assign(ex, r, { t: ex.t, label: ex.label, full: ex.full })
+    else map.set(r.t, { ...r })
+  }
+  return [...map.values()].sort((x, y) => x.t - y.t)
+}
+
 // ---- indexed multi-series aggregation ----
 
 export interface SeriesSpec {

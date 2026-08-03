@@ -4,13 +4,14 @@ A **no-backend** React SPA that reads static CSVs shipped with the app and chart
 weekly/monthly/yearly trends across cities and markets, alongside a curated feed of world
 events. Hosted on GitHub Pages. Everything runs in the browser — no server, no API keys.
 
-**End goal:** the user will upload their shop's **sales** CSV and correlate it against
-weather + economic factors to find trends. Sales upload + comparison views are the main
-pending work.
+**End goal:** the user uploads their shop's **sales** file and correlates it against
+weather + economic factors to find trends. Sales **upload + bottom-of-chart bars + a
+selected-period stats card** now ship (see "Sales data" below); richer **comparison views**
+(scatter, correlation ranking) are the remaining pending work.
 
 ## Stack & hosting
 
-- Vite + React + TypeScript, Tailwind CSS v4 (`@tailwindcss/vite`), Recharts v3, PapaParse.
+- Vite + React + TypeScript, Tailwind CSS v4 (`@tailwindcss/vite`), Recharts v3, PapaParse. **SheetJS (`xlsx`)** parses uploaded sales workbooks — pinned to the CDN tarball (`https://cdn.sheetjs.com/xlsx-0.20.3/…`, NOT the npm registry build, which carries a known advisory) and **lazy-imported** inside `parseSalesFile` so its ~160 KB gzip chunk only ships on upload.
 - Live: https://heraphim.github.io/find-trends/ — repo `heraphim/find-trends`.
 - Deploy: push to `main` → `.github/workflows/deploy.yml` builds and publishes to Pages. It also redeploys after the daily data refresh (chained via `workflow_run`, since a `GITHUB_TOKEN` push can't trigger it directly).
 - `vite.config.ts` sets `base: '/find-trends/'` and injects `__COMMIT_DATE__` / `__BUILD_DATE__` (shown in the floating pill; frozen at dev-server start in `npm run dev`).
@@ -57,7 +58,8 @@ Presentation — a column's **display name** and whether it **shows in the app**
 
 - `lib/workbook.ts` — discover tabs, build the city/category model.
 - `lib/sheet.ts` — fetch + parse a tab into `{rows, columns}`; classify metric vs event.
-- `lib/data.ts` — types, date parsing, bucketing/aggregation (`aggregateMerged`), % rebasing, Pearson correlation, day-count-per-bucket, `bucketToRange` (clicked point → period).
+- `lib/data.ts` — types, date parsing, bucketing/aggregation (`aggregateMerged`), % rebasing, Pearson correlation, day-count-per-bucket, `bucketToRange` (clicked point → period), `bucketRow`/`mergeRowsByT` (shared row builder + union-by-`t`, used to merge sales bars onto the line time axis).
+- `lib/sales.ts` — uploaded **sales** datasets: `parseSalesFile` (lazy `xlsx`; row 3 titles / row 4+ data / col G date / col I amount; reads **raw serials**, not `cellDates`, and keeps blank rows so the fixed layout stays aligned to absolute sheet rows), the city parsed from a `"City - …"` filename prefix, per-bucket **sum** + the two change series (`chg_prev`, `chg_avg5` — computed on the already-filtered buckets), and `salesStatsInRange` for the day card. Persists under `ft.sales` / `ft.salesSel`.
 - `lib/metricMeta.ts` — the **column display registry**: per-column display `label`, `unit`, roll-up, chart `group`, and `tier` (primary/advanced/hidden — see the rule above). `metricMeta()` covers plottable metrics (weather raw + v1/v2 scores share one "Scores" chart, `hazard_factor` ×, `eur_ron` RON + `change_pct` %, commodity `close` + `change_pct`); the `EVENTS` map covers non-numeric event columns; `columnMeta()` returns `{label, tier}` for any column.
 - `lib/dayFilters.ts` — parse the `days` sheet into filter dimensions (weekend/season/holiday…) + date→attributes map; excludes the redundant `is_weekday` name column.
 - `lib/dateRange.ts` — range math + option lists for the Range picker.
@@ -67,19 +69,20 @@ Presentation — a column's **display name** and whether it **shows in the app**
 - `hooks/useTheme.tsx` — theme context; **dark is default**; no-flash script in `index.html`.
 - `hooks/usePersistedState.ts` — localStorage-backed state; ALL config persists under `ft.*` keys.
 
-Layout is a vertical stack: **Cities → CategoryBar → Day-filters row → chart → curated events panel → Wikipedia events panel**. Components: `CityControls` (city checkboxes + overlap), `CategoryBar` (horizontal dropdowns of metric checkboxes per category **+ an Events entry** with Local/Romania/Global source toggles; replaced the old right-hand `Sidebar`, whose file now only holds the shared `SheetState`/`SidebarCategory` types), `DateRangePicker` (Range: Day/Week/Month/Year/All), `GranularityToggle` (Time units, clamped ≤ range), `DayFilters` (own horizontal row), `MultiTrendChart` (Recharts; click a point → focus events; renders curated events as `ReferenceLine` markers via the `eventMarkers` prop), `CuratedEventsPanel` (our events, above Wikipedia), `EventsPanel` (Wikipedia), `BuildInfo`, `ThemeToggle`.
+Layout is a vertical stack: **Cities → CategoryBar → Day-filters row → Sales panel → chart → selected-period stats card → curated events panel → Wikipedia events panel**. Components: `CityControls` (city checkboxes + overlap), `CategoryBar` (horizontal dropdowns of metric checkboxes per category **+ an Events entry** with Local/Romania/Global source toggles; replaced the old right-hand `Sidebar`, whose file now only holds the shared `SheetState`/`SidebarCategory` types), `DateRangePicker` (Range: Day/Week/Month/Year/All), `GranularityToggle` (Time units, clamped ≤ range), `DayFilters` (own horizontal row), `SalesPanel` (Upload button + one card per uploaded dataset: city, count, span, remove, and Amount/Δ-prev/Δ-avg5 checkboxes checked by default), `MultiTrendChart` (Recharts **`ComposedChart`**; lines on the default axis, **sales bars via `barSeries` on a hidden bottom-band axis**; click a point → focus events; renders curated events as `ReferenceLine` markers via the `eventMarkers` prop), `DayStatsCard` (shown when a chart point is selected — relevant weather for the shop city + total money / purchase count / avg / min / max across the checked datasets), `CuratedEventsPanel` (our events, above Wikipedia), `EventsPanel` (Wikipedia), `BuildInfo`, `ThemeToggle`.
 
 ### Behaviour notes
 
 - Cities are multi-select checkboxes (no tabs). Metric selection is city-agnostic (`category::column`); a checked metric plots for every included city that has it.
 - **Overlap** on → all series on one chart; off → one chart per city (+ a "Markets" chart for globals).
-- Chart shows **actual values** (Scale toggle also offers **% change** to compare different-magnitude series). All non-sales data **averages**; the total/average radio is reserved for future sales data.
-- Correlation (Pearson r) shown per chart; per-series color pickers; matching-day counts in the total line + tooltip.
+- Chart shows **actual values** (Scale toggle also offers **% change** to compare different-magnitude series). All non-sales data **averages**; the total/average radio is reserved for future sales data (sales bars themselves always **total** per bucket, per the user's call).
+- Correlation (Pearson r) shown per chart; per-series color pickers; matching-day counts in the total line + tooltip. Sales **amount** series are folded into the correlation set (weather ↔ sales r); the % scale rebases only the lines — sales bars stay in actual units on their own axis.
+- **Sales:** a dataset maps to a city via its `"City - …"` filename; with overlap off, its bars ride that city's chart. Bars sit in the lower ~⅓ (hidden padded axis). Day filters + the active range narrow the buckets before the change series are derived. The day card's stats ignore day filters (the user explicitly picked that period) and aggregate only the checked datasets — none checked → no sales figures.
 - **Events panel:** ≤10-day ranges → Wikipedia Current Events daily digest; longer → year-article "Events" (curated majors), filtered to range. Heuristically scored (topic weight + impact keywords + casualties + coverage), tiered major/notable/minor, "Important only" hides minor. Clicking a chart point focuses the panel on that point's period. Recharts v3 `onClick` gives `activeIndex` (NOT v2's `activePayload`).
 
 ## Pending / ideas
 
-- **Sales CSV upload + comparison** (aligned time-series, scatter + r, correlation ranking) — the main goal, blocked on a sample sales file.
+- **Sales comparison views** — upload + bottom-of-chart bars + the selected-period stats card now ship (`lib/sales.ts`, `SalesPanel`, `DayStatsCard`). Still to do: dedicated **scatter + r** and a **correlation ranking** across factors. Open question: **no currency label** on the money figures yet (raw numbers — add a RON/lei suffix if wanted).
 - **Event overlays** on the chart from day-classifier columns (`season`, `nice_day_label`, `weather_code`, etc.).
 - **Incremental data refresh (deferred, revisit when events get heavy):** the nightly `refresh-data.yml` currently *full-regenerates* every CSV from 2020 — deliberately, because that keeps each CSV a pure, self-healing output and survives schema changes (see the v2-score additions). Decided against incremental for the current lightweight sources. **When the planned heavy events pipeline lands** (large/slow to rebuild, or rate-limited), switch that source to a **trailing-window** refresh: freeze old history, re-fetch only the last ~14–30 days, merge, and recompute any `change_pct`/forward-fill across the seam — while **keeping a `--full` rebuild mode** for schema changes and repair. Weather already does this (`FORECAST_PAST_DAYS = 14`); BNR ships a `nbrfxrates10days.xml` top-up primitive. Trigger to act: the cron starts failing on runtime or rate limits.
 
