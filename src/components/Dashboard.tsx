@@ -126,23 +126,43 @@ function periodLabel(range: DateRange): string {
 const MARKER_COLOR: Record<Tier, string> = { major: '#dc2626', notable: '#d97706', minor: '#94a3b8' }
 
 // Names the events drawn on the chart, split into multi-day ranges (shaded bands)
-// and single-unit events (line markers), directly beneath the chart.
-function MarkerLegend({ markers }: { markers: EventMarker[] }) {
+// and single-unit events (line markers), directly beneath the chart. Hovering an
+// entry glows the matching marker on the chart (via onHover → hoveredMarkerKey).
+function MarkerLegend({
+  markers,
+  onHover,
+  hoveredKey,
+}: {
+  markers: EventMarker[]
+  onHover?: (key: string | null) => void
+  hoveredKey?: string | null
+}) {
   if (markers.length === 0) return null
   const ranges = markers.filter((m) => m.startLabel !== m.endLabel)
   const singles = markers.filter((m) => m.startLabel === m.endLabel)
   const row = (label: string, items: EventMarker[]) => (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <span className="shrink-0 font-medium text-slate-500 dark:text-slate-400">{label}</span>
-      {items.map((m, i) => (
-        <span key={i} className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ background: MARKER_COLOR[m.tier] }} />
-          <span className="tabular-nums text-slate-400">
-            {m.startLabel === m.endLabel ? m.startLabel : `${m.startLabel} – ${m.endLabel}`}
+      {items.map((m) => {
+        const key = `${m.startLabel}|${m.endLabel}`
+        return (
+          <span
+            key={key}
+            onMouseEnter={() => onHover?.(key)}
+            onMouseLeave={() => onHover?.(null)}
+            className={
+              'inline-flex cursor-default items-center gap-1.5 rounded px-1 -mx-1 transition-colors ' +
+              (hoveredKey === key ? 'bg-slate-200 dark:bg-slate-700' : '')
+            }
+          >
+            <span className="inline-block h-2 w-2 rounded-full" style={{ background: MARKER_COLOR[m.tier] }} />
+            <span className="tabular-nums text-slate-400">
+              {m.startLabel === m.endLabel ? m.startLabel : `${m.startLabel} – ${m.endLabel}`}
+            </span>
+            <span className="text-slate-600 dark:text-slate-300">{m.names.join(', ')}</span>
           </span>
-          <span className="text-slate-600 dark:text-slate-300">{m.names.join(', ')}</span>
-        </span>
-      ))}
+        )
+      })}
     </div>
   )
   return (
@@ -255,6 +275,8 @@ export function Dashboard() {
   )
   // A clicked chart point focuses the events panel on that bucket's period.
   const [focusedT, setFocusedT] = useState<number | null>(null)
+  // Event-legend hover → glow the matching marker on the chart.
+  const [hoveredMarker, setHoveredMarker] = useState<string | null>(null)
 
   const inFlight = useRef<Set<string>>(new Set())
   const eventInFlight = useRef<Set<string>>(new Set())
@@ -1077,8 +1099,9 @@ export function Dashboard() {
                     eventMarkers={markers}
                     bucketEvents={bucketEvents}
                     onZoom={zoomTo}
+                    hoveredMarkerKey={hoveredMarker}
                   />
-                  <MarkerLegend markers={markers} />
+                  <MarkerLegend markers={markers} onHover={setHoveredMarker} hoveredKey={hoveredMarker} />
                   {g.correlations.length > 0 && (
                     <div className="mt-2 flex flex-col gap-0.5 text-xs text-slate-500 dark:text-slate-400">
                       {g.correlations.slice(0, 3).map((c, i) => (

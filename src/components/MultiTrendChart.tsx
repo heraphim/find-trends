@@ -48,6 +48,12 @@ interface Props {
   eventMarkers?: EventMarker[]
   bucketEvents?: BucketEvent[]
   onZoom?: (startT: number, endT: number) => void
+  hoveredMarkerKey?: string | null // event-legend hover → glow that marker
+}
+
+// A marker's stable key (must match the event legend's key).
+function markerKey(m: EventMarker): string {
+  return `${m.startLabel}|${m.endLabel}`
 }
 
 // Sales bars sit in the lower band of the plot: give them a dedicated (hidden)
@@ -194,6 +200,7 @@ export function MultiTrendChart({
   eventMarkers,
   bucketEvents,
   onZoom,
+  hoveredMarkerKey,
 }: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
@@ -203,6 +210,12 @@ export function MultiTrendChart({
   const barIds = bars.map((s) => s.id)
   const labelById = new Map(allSeries.map((s) => [s.id, s.label]))
   const barDomain = salesDomain(data, barIds)
+
+  // Legend hover → "glow" the hovered series (emphasise it, dim the rest).
+  const [hoveredSeries, setHoveredSeries] = useState<string | null>(null)
+  // Emphasis for a series id given what (if anything) is hovered.
+  const seriesEmphasis = (id: string): 'on' | 'off' | 'dim' =>
+    hoveredSeries === null ? 'off' : hoveredSeries === id ? 'on' : 'dim'
   // With few points, draw dots so single/sparse days are visible.
   const showDots = data.length <= 40
 
@@ -235,6 +248,8 @@ export function MultiTrendChart({
         <ComposedChart
           data={data}
           margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
+          barGap={0}
+          barCategoryGap="18%"
           onMouseDown={(state: unknown) => {
             if (!canZoom) return
             const idx = activeIndexOf(state, data)
@@ -308,63 +323,81 @@ export function MultiTrendChart({
             }
           />
           <Legend
+            onMouseEnter={(o) => {
+              const p = o as { dataKey?: string | number; value?: string }
+              const id = p.dataKey ?? p.value
+              setHoveredSeries(id != null ? String(id) : null)
+            }}
+            onMouseLeave={() => setHoveredSeries(null)}
             formatter={(value: string) => (
-              <span style={{ color: colors.inkMuted, fontSize: 12 }}>
+              <span style={{ color: colors.inkMuted, fontSize: 12, cursor: 'pointer' }}>
                 {labelById.get(value) ?? value}
               </span>
             )}
           />
           {/* Sales bars first, so the trend lines draw on top of them. */}
-          {bars.map((s) => (
-            <Bar
-              key={s.id}
-              yAxisId="sales"
-              dataKey={s.id}
-              name={s.id}
-              fill={colorById[s.id] ?? colors.categorical[0]}
-              fillOpacity={0.5}
-              isAnimationActive={false}
-              maxBarSize={48}
-            />
-          ))}
-          {series.map((s) => (
-            <Line
-              key={s.id}
-              type="monotone"
-              dataKey={s.id}
-              name={s.id}
-              stroke={colorById[s.id] ?? colors.categorical[0]}
-              strokeWidth={2}
-              dot={showDots ? { r: 2.5, strokeWidth: 0 } : false}
-              activeDot={{ r: 4, strokeWidth: 0 }}
-              isAnimationActive={false}
-              connectNulls
-            />
-          ))}
-          {/* Event markers last, so they draw ON TOP of the bars and lines. */}
-          {eventMarkers?.map((m) =>
-            m.startLabel === m.endLabel ? (
+          {bars.map((s) => {
+            const emph = seriesEmphasis(s.id)
+            return (
+              <Bar
+                key={s.id}
+                yAxisId="sales"
+                dataKey={s.id}
+                name={s.id}
+                fill={colorById[s.id] ?? colors.categorical[0]}
+                fillOpacity={emph === 'on' ? 0.9 : emph === 'dim' ? 0.12 : 0.5}
+                isAnimationActive={false}
+                maxBarSize={48}
+              />
+            )
+          })}
+          {series.map((s) => {
+            const emph = seriesEmphasis(s.id)
+            return (
+              <Line
+                key={s.id}
+                type="monotone"
+                dataKey={s.id}
+                name={s.id}
+                stroke={colorById[s.id] ?? colors.categorical[0]}
+                strokeWidth={emph === 'on' ? 4 : 2}
+                strokeOpacity={emph === 'dim' ? 0.18 : 1}
+                dot={showDots ? { r: 2.5, strokeWidth: 0 } : false}
+                activeDot={{ r: 4, strokeWidth: 0 }}
+                isAnimationActive={false}
+                connectNulls
+              />
+            )
+          })}
+          {/* Event markers last, so they draw ON TOP of the bars and lines.
+              Event-legend hover glows the matching marker and dims the rest. */}
+          {eventMarkers?.map((m) => {
+            const k = markerKey(m)
+            const on = hoveredMarkerKey === k
+            const dim = hoveredMarkerKey != null && !on
+            return m.startLabel === m.endLabel ? (
               <ReferenceLine
-                key={`${m.startLabel}|${m.endLabel}`}
+                key={k}
                 x={m.startLabel}
                 stroke={TIER_COLOR[m.tier]}
-                strokeDasharray="3 3"
-                strokeOpacity={0.8}
+                strokeDasharray={on ? undefined : '3 3'}
+                strokeWidth={on ? 2.5 : 1}
+                strokeOpacity={dim ? 0.15 : on ? 1 : 0.8}
                 label={<MarkerLabel color={TIER_COLOR[m.tier]} names={m.names} />}
               />
             ) : (
               <ReferenceArea
-                key={`${m.startLabel}|${m.endLabel}`}
+                key={k}
                 x1={m.startLabel}
                 x2={m.endLabel}
                 fill={TIER_COLOR[m.tier]}
-                fillOpacity={0.12}
+                fillOpacity={dim ? 0.04 : on ? 0.3 : 0.12}
                 stroke={TIER_COLOR[m.tier]}
-                strokeOpacity={0.35}
+                strokeOpacity={dim ? 0.1 : on ? 0.8 : 0.35}
                 label={<MarkerLabel color={TIER_COLOR[m.tier]} names={m.names} />}
               />
-            ),
-          )}
+            )
+          })}
         </ComposedChart>
       </ResponsiveContainer>
     </div>
