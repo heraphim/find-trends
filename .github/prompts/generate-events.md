@@ -13,17 +13,16 @@ All share one schema:
 - `brasov_events.csv` — events in/around Brașov, Romania.
 - `sibiu_events.csv` — events in/around Sibiu, Romania.
 - `romania_events.csv` — national Romanian events (politics, economy, disasters, major movements).
-- `global_events.csv` — major world events with plausible spillover to Romanian retail (pandemics, wars, energy shocks, big EU-wide changes). Currently header-only.
+- `global_events.csv` — major world events with plausible spillover to Romanian retail (pandemics, wars, energy shocks, big EU-wide changes).
 
 ## Rules (strict)
 
-1. **Never modify or delete an existing row.** Do not touch existing `Start Date`,
-   `End Date`, `Event Name`, `Event Type`, or `Importance (1-100)` values. Read each
-   file first to see what already exists; match on Event Name + Start Date to avoid
-   duplicates.
-2. **Backfill only.** For existing rows, you may fill the *empty* `Impact Category`,
-   `Positive or Negative`, and `Description` cells — but only when you are confident
-   of the fact. Leave blank if unsure. Do not overwrite non-empty cells.
+1. **Append only — never modify or delete an existing row.** Do not change ANY cell of
+   any row already present, including empty cells. Read each file first to see what
+   exists; match on Event Name + Start Date to avoid duplicates.
+2. **Your only job is to APPEND brand-new event rows** that are not already present.
+   Fill every column you reasonably can for the rows you add; leave a field blank only
+   if genuinely unknown. Do not go back and edit older rows.
 3. **New events:** add genuinely real events (recent or credibly scheduled/upcoming)
    that are not already present, in the correct city/national/global file. Recurring
    annual events (festivals, markets) should get a row for each new edition with that
