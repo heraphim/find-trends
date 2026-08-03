@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Bar,
   CartesianGrid,
@@ -465,24 +465,51 @@ export function MultiTrendChart({
   // With few points, draw dots so single/sparse days are visible.
   const showDots = data.length <= 40
 
-  // Drag-to-zoom: track the selected index span; commit on release.
-  const [drag, setDrag] = useState<{ startIdx: number; endIdx: number } | null>(null)
+  // Drag-to-zoom: track the selected index span; commit on release. A ref mirrors
+  // the span (and the mousedown x) so the window-level mouseup handler always sees
+  // the latest values even though it's registered once per drag.
+  type DragSpan = { startIdx: number; endIdx: number }
+  const [drag, setDrag] = useState<DragSpan | null>(null)
+  const dragRef = useRef<DragSpan | null>(null)
+  const startXRef = useRef(0) // pointer clientX at mousedown, for the click-vs-drag threshold
   const draggedRef = useRef(false) // suppress the click that ends a drag
+  // The pointer must travel this many px before a press counts as a zoom-drag
+  // rather than a click, so a slightly-imperfect click still selects a unit.
+  const DRAG_THRESHOLD = 6
+
+  const updateDrag = (d: DragSpan | null) => {
+    dragRef.current = d
+    setDrag(d)
+  }
 
   const finishDrag = () => {
-    if (drag && drag.startIdx !== drag.endIdx && onZoom) {
-      const a = data[Math.min(drag.startIdx, drag.endIdx)]?.t
-      const b = data[Math.max(drag.startIdx, drag.endIdx)]?.t
+    const d = dragRef.current
+    if (d && d.startIdx !== d.endIdx && onZoom) {
+      const a = data[Math.min(d.startIdx, d.endIdx)]?.t
+      const b = data[Math.max(d.startIdx, d.endIdx)]?.t
       if (typeof a === 'number' && typeof b === 'number') {
         draggedRef.current = true
         onZoom(a, b)
       }
     }
-    setDrag(null)
+    updateDrag(null)
   }
 
   const canZoom = !!onZoom && data.length > 1
   const dragging = drag !== null && drag.startIdx !== drag.endIdx
+
+  // Let a drag finish even when released outside the plot: while a drag is active,
+  // a window-level mouseup commits it. Because onMouseMove stops firing once the
+  // pointer leaves the chart, endIdx stays pinned to the last in-bounds time unit
+  // — so dragging off the edge selects up to that unit instead of cancelling.
+  useEffect(() => {
+    if (drag === null) return
+    const onUp = () => finishDrag()
+    window.addEventListener('mouseup', onUp)
+    return () => window.removeEventListener('mouseup', onUp)
+    // finishDrag reads dragRef.current, so only "is a drag active" matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drag === null])
 
   return (
     <div
@@ -496,18 +523,27 @@ export function MultiTrendChart({
           margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
           barGap={0}
           barCategoryGap="18%"
-          onMouseDown={(state: unknown) => {
+          onMouseDown={(state: unknown, e: { clientX?: number }) => {
             if (!canZoom) return
+            draggedRef.current = false // clear any stale flag from a prior gesture
             const idx = activeIndexOf(state, data)
-            if (idx !== null) setDrag({ startIdx: idx, endIdx: idx })
+            if (idx !== null) {
+              startXRef.current = e?.clientX ?? 0
+              updateDrag({ startIdx: idx, endIdx: idx })
+            }
           }}
-          onMouseMove={(state: unknown) => {
-            if (!drag) return
+          onMouseMove={(state: unknown, e: { clientX?: number }) => {
+            const d = dragRef.current
+            if (!d) return
             const idx = activeIndexOf(state, data)
-            if (idx !== null && idx !== drag.endIdx) setDrag({ ...drag, endIdx: idx })
+            if (idx === null) return
+            // Only widen the selection once the pointer has moved past the
+            // threshold; a near-still press stays a single-unit click.
+            const moved =
+              e?.clientX == null || Math.abs(e.clientX - startXRef.current) > DRAG_THRESHOLD
+            const endIdx = moved ? idx : d.startIdx
+            if (endIdx !== d.endIdx) updateDrag({ ...d, endIdx })
           }}
-          onMouseUp={finishDrag}
-          onMouseLeave={() => setDrag(null)}
           onClick={(state: unknown) => {
             if (draggedRef.current) {
               draggedRef.current = false

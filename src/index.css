@@ -7,3 +7,13 @@
 html {
   color-scheme: light dark;
 }
+
+/* Recharts marks its internal layer <g> elements tabindex="-1", so clicking the
+   chart focuses one and the browser paints its default (rounded) focus ring
+   around that layer's bounding box — appearing as a stray rectangle that grows
+   or shrinks with where you click. These layers aren't interactive, so suppress
+   the ring. */
+.recharts-wrapper :focus,
+.recharts-wrapper:focus {
+  outline: none;
+}
