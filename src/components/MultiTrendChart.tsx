@@ -181,7 +181,11 @@ function BandCursor(props: {
 // Sales bars sit in the lower band of the plot: give them a dedicated (hidden)
 // axis whose top is padded well above the data so the tallest bar reaches only
 // ~1/3 of the height, leaving the upper area for the trend lines.
-function salesDomain(data: ChartRow[], barIds: string[]): [number, number] {
+// Domain for the hidden sales axis. `headroom` is how much of the axis is left
+// empty above the tallest bar, as a multiple of the data range: 2 pins the bars
+// into the lower ~third of the plot (so trend lines have room above them), while
+// a small value lets a bars-only chart fill most of its height.
+function salesDomain(data: ChartRow[], barIds: string[], headroom: number): [number, number] {
   let min = 0
   let max = 0
   for (const r of data) {
@@ -194,7 +198,7 @@ function salesDomain(data: ChartRow[], barIds: string[]): [number, number] {
     }
   }
   if (min === 0 && max === 0) return [0, 1]
-  return [min, max + (max - min) * 2]
+  return [min, max + (max - min) * headroom]
 }
 
 // Read the hovered/active data index out of a recharts mouse-event state.
@@ -337,7 +341,9 @@ export function MultiTrendChart({
   const lineIds = new Set(series.map((s) => s.id))
   const barIds = bars.map((s) => s.id)
   const labelById = new Map(allSeries.map((s) => [s.id, s.label]))
-  const barDomain = salesDomain(data, barIds)
+  // With no trend lines, let the sales bars use most of the vertical space
+  // (small headroom); with lines present, keep them in the lower band.
+  const barDomain = salesDomain(data, barIds, series.length === 0 ? 0.15 : 2)
   // No line/bar series (e.g. an events-only chart): Recharts v3 only draws
   // ReferenceLine/Area when a graphical series exists, so we add one invisible
   // baseline line (dataKey `__ev`) and pin the y-axis to a dummy [0,1] domain.
