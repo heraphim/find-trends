@@ -54,17 +54,32 @@ Presentation — a column's **display name** and whether it **shows in the app**
 
 ## Research data (`research/` — offline, not loaded by the app)
 
-`research/` holds hand-curated, **web-researched reference CSVs** about businesses and places in the
-**Brașov and Sibiu** city centres — compiled to explore the end-goal of correlating a shop's activity
-against the trend data. **Not in `tabs.json`, not loaded at runtime, not on any refresh schedule** —
-static snapshots (Aug 2026) that will drift. See `research/README.md` for the per-file schema. Contents:
-city-centre business lists (with `opened`/`closed`, a `date_basis` provenance column, and a
+`research/` holds hand-curated, **web-researched reference CSVs**, compiled to explore the end-goal
+of correlating a shop's activity against the trend data. **Not in `tabs.json`, not loaded at runtime,
+not on any refresh schedule** — static snapshots (Aug 2026) that will drift. Split into two subfolders,
+each with its own `README.md`: **`research/businesses/`** and **`research/tourism/`**.
+
+### `research/businesses/` — Brașov & Sibiu city-centre businesses/places
+
+City-centre business lists (with `opened`/`closed`, a `date_basis` provenance column, and a
 `replaced_predecessor` "what-replaced-what" timeline), social-media handles + follower counts,
 `company-entities.csv` (trade name → legal SRL + **CUI**), `company-financials.csv` (**ANAF financials in
 RON** — note: listafirme.eu reports EUR mislabeled as RON, so RON sources like quickconta.ro/totalfirme.ro
 were used), `google-maps-stats.csv`, and `*-places.csv` (malls/recreation/touristic/nature). Values are
 `~`-prefixed when approximate and only recorded with a cited source. Reference material for a possible
 future business/foot-traffic layer — if it ever feeds the app it needs reshaping + a refresh story.
+
+### `research/tourism/` — tourist provenience (origin) data & estimates
+
+Where tourists come from. **Key limitation:** INS publishes foreign arrivals *by country of origin*
+**only nationally** (Tempo `TUR104A`/`TUR104B`, monthly); at county level (`TUR104F`) Brașov/Sibiu split
+only Romanian-vs-foreign **total**, never per country — so a `city × country` table doesn't exist
+officially and is **modelled** here. Files: `romania-arrivals-by-country-2025.csv` (**real** national
+top-20), `city-arrivals-totals.csv` (**real** Brașov/Sibiu/Romania totals — Brașov skews *domestic* at
+14.5% foreign, Sibiu skews *international* at ~25%), `estimate_city_provenance.py` (reproducible model:
+locals=locals, national-proportion mix, per-city **German uplift** for the Saxon heritage, ×real foreign
+total) → `estimated-city-by-country-2025.csv` (**ESTIMATE**). Annual only; monthly needs a Tempo `TUR104F`
+county pull first (see the folder README).
 
 ## App architecture
 

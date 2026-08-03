@@ -1,4 +1,4 @@
-# research/ — Brașov & Sibiu business/place research (offline reference data)
+# research/businesses/ — Brașov & Sibiu business/place research (offline reference data)
 
 Hand-curated, **web-researched snapshots** compiled to explore correlating shop activity against
 the trend data. **Not loaded by the app** and **not on any refresh schedule** — these are static
