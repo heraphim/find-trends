@@ -858,22 +858,39 @@ export function Dashboard() {
     return cols
   }, [focusedRange, discovery, includedCities, checkedDatasets, sheetStates])
 
-  // Overall date span of the loaded data (min/max across every ready sheet, read
-  // from each series' sorted endpoints). Bounds how far prev/next can step.
+  // Date span that prev/next may step within. Follows the data the user is
+  // actually scrubbing, in priority order:
+  //   1. plotted sales datasets — so stepping stops at the shop's last sale, not
+  //      at the weather sheet's 7-day *forecast* tail (which runs past today);
+  //   2. else the selected line series' sheets (weather/markets-only viewing);
+  //   3. else every loaded sheet (last-resort, e.g. events-only browsing).
   const dataExtent = useMemo<{ minT: number; maxT: number } | null>(() => {
     let minT = Infinity
     let maxT = -Infinity
-    for (const key of Object.keys(sheetStates)) {
-      const st = sheetStates[key]
-      if (st?.status !== 'ready' || st.data.rows.length === 0) continue
-      const rows = st.data.rows
-      const a = rows[0].date.getTime()
-      const b = rows[rows.length - 1].date.getTime()
+    const consider = (a: number, b: number) => {
       minT = Math.min(minT, a, b)
       maxT = Math.max(maxT, a, b)
     }
+    const plottedSales = checkedDatasets.filter(datasetVisible)
+    if (plottedSales.length) {
+      for (const ds of plottedSales) {
+        if (ds.tx.length) consider(ds.tx[0][0], ds.tx[ds.tx.length - 1][0])
+      }
+    } else if (series.length) {
+      for (const s of series) {
+        const st = sheetStates[s.sheet]
+        if (st?.status !== 'ready' || st.data.rows.length === 0) continue
+        consider(st.data.rows[0].date.getTime(), st.data.rows[st.data.rows.length - 1].date.getTime())
+      }
+    } else {
+      for (const key of Object.keys(sheetStates)) {
+        const st = sheetStates[key]
+        if (st?.status !== 'ready' || st.data.rows.length === 0) continue
+        consider(st.data.rows[0].date.getTime(), st.data.rows[st.data.rows.length - 1].date.getTime())
+      }
+    }
     return maxT >= minT ? { minT, maxT } : null
-  }, [sheetStates])
+  }, [checkedDatasets, datasetVisible, series, sheetStates])
 
   // Can the selection step one unit further and still land on a bucket that has
   // data? (Hides the prev/next buttons at the dataset's edges.)
