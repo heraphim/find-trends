@@ -311,21 +311,57 @@ function sameSnap(a: TimeSnap, b: TimeSnap): boolean {
 const DEFAULT_SNAP = (): TimeSnap => ({ range: lastNDays(30), gran: 'day' })
 
 const DAY_MS = 86_400_000
+// Wheel/pinch events closer together than this collapse into one history entry.
+const GESTURE_COALESCE_MS = 500
 function startOfDay(t: number): Date {
   const d = new Date(t)
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }
-// Zoom is just a range change: scale the window around its center by `factor`
-// (<1 = zoom in, >1 = zoom out), snapped to whole days and clamped to bounds.
-function zoomRange(r: DateRange, factor: number, bounds: { min: Date; max: Date }): DateRange {
-  const center = (r.start.getTime() + r.end.getTime()) / 2
-  const half = ((r.end.getTime() - r.start.getTime()) / 2) * factor
+// Zoom is just a range change: scale the window by `factor` (<1 = zoom in, >1 =
+// zoom out) about an anchor at `anchorFraction` across the window (0 = start, 0.5
+// = centre — the buttons' default, 1 = end — used by wheel/pinch to keep the point
+// under the cursor fixed). Snapped to whole days and clamped to bounds.
+function zoomRange(
+  r: DateRange,
+  factor: number,
+  bounds: { min: Date; max: Date },
+  anchorFraction = 0.5,
+): DateRange {
+  const s0 = r.start.getTime()
+  const span = r.end.getTime() - s0
+  const anchorT = s0 + anchorFraction * span
+  const newSpan = span * factor
   const lo = startOfDay(bounds.min.getTime()).getTime()
   const hi = startOfDay(bounds.max.getTime()).getTime()
-  let s = Math.max(startOfDay(center - half).getTime(), lo)
-  let e = Math.min(startOfDay(center + half).getTime(), hi)
+  let s = Math.max(startOfDay(anchorT - anchorFraction * newSpan).getTime(), lo)
+  let e = Math.min(startOfDay(anchorT + (1 - anchorFraction) * newSpan).getTime(), hi)
   if (e < s) e = s
   return { start: new Date(s), end: new Date(e) }
+}
+
+// Horizontal pan: shift a window by `fraction` of its own span (grab-and-drag —
+// `fraction` > 0 means the pointer was dragged right, which moves the content
+// right, i.e. the window *back* in time), preserving the span and clamping to
+// bounds. Always applied to the gesture's base range so the day-snapping doesn't
+// swallow sub-day moves as they accumulate.
+function panRange(base: DateRange, fraction: number, bounds: { min: Date; max: Date }): DateRange {
+  const s0 = base.start.getTime()
+  const e0 = base.end.getTime()
+  const dt = -fraction * (e0 - s0)
+  const lo = startOfDay(bounds.min.getTime()).getTime()
+  const hi = startOfDay(bounds.max.getTime()).getTime()
+  let s = s0 + dt
+  let e = e0 + dt
+  if (s < lo) {
+    e += lo - s
+    s = lo
+  }
+  if (e > hi) {
+    s -= e - hi
+    e = hi
+  }
+  if (s < lo) s = lo
+  return { start: startOfDay(s), end: startOfDay(e) }
 }
 
 export function Dashboard() {
@@ -658,11 +694,20 @@ export function Dashboard() {
   // history at TIME_HISTORY_MAX (drop oldest), and set the focus — null for a
   // plain range/unit change, or an edge bucket for a Next/Prev step.
   const commitTime = useCallback(
-    (next: (cur: TimeSnap) => TimeSnap, focus: number | null = null) => {
+    (next: (cur: TimeSnap) => TimeSnap, focus: number | null = null, opts?: { replace?: boolean }) => {
       setTimeHistory((h) => {
         const cur = h[h.length - 1] ?? DEFAULT_SNAP()
         const raw = next(cur)
         const snap: TimeSnap = { range: raw.range, gran: clampGran(raw.gran, raw.range) }
+        // `replace` swaps the top in place instead of pushing — used by continuous
+        // gestures (wheel/pinch/drag) so one gesture is a single history entry
+        // rather than dozens. The base for the pushed-then-replaced entry is the
+        // pre-gesture snapshot, so Back still lands where the gesture began.
+        if (opts?.replace) {
+          const rest = h.slice(0, -1).filter((s) => !sameSnap(s, snap))
+          const appended = [...rest, snap]
+          return appended.length > TIME_HISTORY_MAX ? appended.slice(appended.length - TIME_HISTORY_MAX) : appended
+        }
         if (sameSnap(cur, snap)) return h
         const deduped = h.filter((s) => !sameSnap(s, snap))
         const appended = [...deduped, snap]
@@ -720,6 +765,40 @@ export function Dashboard() {
   const canZoomOut =
     activeRange.start.getTime() > startOfDay(bounds.min.getTime()).getTime() ||
     activeRange.end.getTime() < startOfDay(bounds.max.getTime()).getTime()
+
+  // Wheel / pinch zoom, anchored under the pointer. Rapid events within
+  // GESTURE_COALESCE_MS collapse into one history entry (replace the top) so a
+  // scroll/pinch burst is a single Back step.
+  const lastZoomTs = useRef(0)
+  const zoomGesture = useCallback(
+    (factor: number, anchorFraction: number) => {
+      const now = Date.now()
+      const replace = now - lastZoomTs.current < GESTURE_COALESCE_MS
+      lastZoomTs.current = now
+      commitTime((cur) => ({ range: zoomRange(cur.range, factor, bounds, anchorFraction), gran: cur.gran }), null, {
+        replace,
+      })
+    },
+    [commitTime, bounds],
+  )
+
+  // Middle-button drag → horizontal pan. `fraction` is cumulative drag distance
+  // (as a share of chart width) since the gesture began; applied to the base range
+  // captured on the first move, so the whole drag is one history entry.
+  const panBaseRef = useRef<DateRange | null>(null)
+  const panGesture = useCallback(
+    (fraction: number, phase: 'move' | 'end') => {
+      if (phase === 'end') {
+        panBaseRef.current = null
+        return
+      }
+      const first = panBaseRef.current === null
+      const base = panBaseRef.current ?? activeRange
+      if (first) panBaseRef.current = base
+      commitTime((cur) => ({ range: panRange(base, fraction, bounds), gran: cur.gran }), null, { replace: !first })
+    },
+    [commitTime, bounds, activeRange],
+  )
 
   const toggleCity = useCallback((city: string) => {
     setIncludedCities((prev) => {
@@ -1364,6 +1443,8 @@ export function Dashboard() {
                     eventMarkers={markers}
                     bucketEvents={bucketEvents}
                     onZoom={zoomTo}
+                    onGestureZoom={zoomGesture}
+                    onGesturePan={panGesture}
                     hoveredMarkerKey={hoveredMarker}
                     selectedT={focusedT}
                   />

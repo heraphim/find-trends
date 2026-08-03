@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useChartGestures } from '../hooks/useChartGestures'
 import {
   Bar,
   CartesianGrid,
@@ -50,6 +51,10 @@ interface Props {
   eventMarkers?: EventMarker[]
   bucketEvents?: BucketEvent[]
   onZoom?: (startT: number, endT: number) => void
+  // Wheel/pinch zoom (factor <1 in, >1 out; anchorFraction 0..1 across the width)
+  // and middle-drag horizontal pan (fraction of width since the drag began).
+  onGestureZoom?: (factor: number, anchorFraction: number) => void
+  onGesturePan?: (fraction: number, phase: 'move' | 'end') => void
   hoveredMarkerKey?: string | null // event-legend hover → glow that marker
   selectedT?: number | null // the clicked/selected bucket, highlighted like hover
 }
@@ -427,6 +432,8 @@ export function MultiTrendChart({
   eventMarkers,
   bucketEvents,
   onZoom,
+  onGestureZoom,
+  onGesturePan,
   hoveredMarkerKey,
   selectedT,
 }: Props) {
@@ -498,6 +505,14 @@ export function MultiTrendChart({
   const canZoom = !!onZoom && data.length > 1
   const dragging = drag !== null && drag.startIdx !== drag.endIdx
 
+  // Wheel/pinch zoom + middle-drag pan, on native (non-passive) listeners.
+  const wrapRef = useRef<HTMLDivElement>(null)
+  useChartGestures(wrapRef, {
+    onZoom: onGestureZoom,
+    onPan: onGesturePan,
+    enabled: (!!onGestureZoom || !!onGesturePan) && data.length > 1,
+  })
+
   // Let a drag finish even when released outside the plot: while a drag is active,
   // a window-level mouseup commits it. Because onMouseMove stops firing once the
   // pointer leaves the chart, endIdx stays pinned to the last in-bounds time unit
@@ -513,8 +528,10 @@ export function MultiTrendChart({
 
   return (
     <div
+      ref={wrapRef}
       className={
-        'h-96 w-full' + (canZoom ? ' cursor-crosshair select-none' : onPointClick ? ' cursor-pointer' : '')
+        'h-96 w-full touch-none' +
+        (canZoom ? ' cursor-crosshair select-none' : onPointClick ? ' cursor-pointer' : '')
       }
     >
       <ResponsiveContainer width="100%" height="100%">
