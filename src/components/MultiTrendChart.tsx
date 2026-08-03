@@ -104,28 +104,30 @@ function UnitTicks({ labels, tickColor }: { labels: string[]; tickColor: string 
 // band branch in its Cursor is BarChart-only), so hovering a unit would show a
 // thin mid-line. This custom cursor paints the whole hovered time-unit band
 // instead. Recharts clones the element with `points` (the line's top/bottom
-// endpoints, centered on the hovered unit) and `offset` (the plot rect); we
-// widen that into a band `plotWidth / bucketCount` across, clamped to the plot
-// so edge units don't spill past the axis.
+// endpoints, centered on the hovered unit) plus the plot-rect offset spread
+// flat as top-level `left`/`width` props; we widen that into a band
+// `plotWidth / bucketCount` across, clamped so edge units don't spill past the
+// axis.
 function BandCursor(props: {
   bucketCount: number
   fill: string
   fillOpacity: number
   points?: { x: number; y: number }[]
-  offset?: { left: number; width: number }
+  left?: number
+  width?: number
 }) {
-  const { bucketCount, fill, fillOpacity, points, offset } = props
-  if (!points || points.length < 2 || !offset || bucketCount <= 0) return null
-  const band = offset.width / bucketCount
-  const left = Math.max(offset.left, points[0].x - band / 2)
-  const right = Math.min(offset.left + offset.width, points[0].x + band / 2)
-  const width = right - left
-  if (width <= 0) return null
+  const { bucketCount, fill, fillOpacity, points, left, width } = props
+  if (!points || points.length < 2 || left == null || width == null || bucketCount <= 0) return null
+  const band = width / bucketCount
+  const x1 = Math.max(left, points[0].x - band / 2)
+  const x2 = Math.min(left + width, points[0].x + band / 2)
+  const w = x2 - x1
+  if (w <= 0) return null
   return (
     <rect
-      x={left}
+      x={x1}
       y={points[0].y}
-      width={width}
+      width={w}
       height={points[1].y - points[0].y}
       fill={fill}
       fillOpacity={fillOpacity}
