@@ -19,6 +19,8 @@ interface Props {
   onClear?: () => void
   onPrev?: () => void // step the selected period back one unit
   onNext?: () => void // step it forward one unit
+  canPrev?: boolean // false → the ← button is shown but disabled (at the data edge)
+  canNext?: boolean // false → the → button is shown but disabled
 }
 
 function plain(v: number): string {
@@ -102,7 +104,7 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function DayStatsCard({ title, columns, onClear, onPrev, onNext }: Props) {
+export function DayStatsCard({ title, columns, onClear, onPrev, onNext, canPrev, canNext }: Props) {
   const [collapsed, toggle] = useCollapsed('day-stats')
 
   // Combined totals across every city column (sales-bearing columns only).
@@ -122,8 +124,9 @@ export function DayStatsCard({ title, columns, onClear, onPrev, onNext }: Props)
             <button
               type="button"
               onClick={onPrev}
-              title="Previous"
-              className="rounded border border-slate-300 px-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              disabled={!canPrev}
+              title={canPrev ? 'Previous period' : 'At the start of the data'}
+              className="rounded border border-slate-300 px-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               ←
             </button>
@@ -135,8 +138,9 @@ export function DayStatsCard({ title, columns, onClear, onPrev, onNext }: Props)
             <button
               type="button"
               onClick={onNext}
-              title="Next"
-              className="rounded border border-slate-300 px-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              disabled={!canNext}
+              title={canNext ? 'Next period' : 'At the end of the data'}
+              className="rounded border border-slate-300 px-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               →
             </button>

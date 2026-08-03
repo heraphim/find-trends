@@ -310,6 +310,24 @@ function sameSnap(a: TimeSnap, b: TimeSnap): boolean {
 }
 const DEFAULT_SNAP = (): TimeSnap => ({ range: lastNDays(30), gran: 'day' })
 
+const DAY_MS = 86_400_000
+function startOfDay(t: number): Date {
+  const d = new Date(t)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+// Zoom is just a range change: scale the window around its center by `factor`
+// (<1 = zoom in, >1 = zoom out), snapped to whole days and clamped to bounds.
+function zoomRange(r: DateRange, factor: number, bounds: { min: Date; max: Date }): DateRange {
+  const center = (r.start.getTime() + r.end.getTime()) / 2
+  const half = ((r.end.getTime() - r.start.getTime()) / 2) * factor
+  const lo = startOfDay(bounds.min.getTime()).getTime()
+  const hi = startOfDay(bounds.max.getTime()).getTime()
+  let s = Math.max(startOfDay(center - half).getTime(), lo)
+  let e = Math.min(startOfDay(center + half).getTime(), hi)
+  if (e < s) e = s
+  return { start: new Date(s), end: new Date(e) }
+}
+
 export function Dashboard() {
   const [discovery, setDiscovery] = useState<Discovery>({ status: 'loading' })
   // Persisted config — survives reloads (see usePersistedState).
@@ -687,6 +705,22 @@ export function Dashboard() {
     [commitTime, granularity],
   )
 
+  // Zoom in/out buttons: halve / double the window around its center (a range
+  // change, so it commits to the history and Back undoes it).
+  const zoomIn = useCallback(
+    () => commitTime((cur) => ({ range: zoomRange(cur.range, 0.5, bounds), gran: cur.gran })),
+    [commitTime, bounds],
+  )
+  const zoomOut = useCallback(
+    () => commitTime((cur) => ({ range: zoomRange(cur.range, 2, bounds), gran: cur.gran })),
+    [commitTime, bounds],
+  )
+  const spanDays = Math.round((activeRange.end.getTime() - activeRange.start.getTime()) / DAY_MS) + 1
+  const canZoomIn = spanDays > 1
+  const canZoomOut =
+    activeRange.start.getTime() > startOfDay(bounds.min.getTime()).getTime() ||
+    activeRange.end.getTime() < startOfDay(bounds.max.getTime()).getTime()
+
   const toggleCity = useCallback((city: string) => {
     setIncludedCities((prev) => {
       const next = new Set(prev)
@@ -1028,31 +1062,29 @@ export function Dashboard() {
     return maxT >= minT ? { minT, maxT } : null
   }, [checkedDatasets, datasetVisible, series, sheetStates])
 
-  // Can the selection step one unit further and still land on a bucket that has
-  // data? (Hides the prev/next buttons at the dataset's edges.)
-  const stepInBounds = useCallback(
-    (dir: 1 | -1): boolean => {
-      if (focusedT === null || granularity === 'all' || !dataExtent) return false
-      const next = stepBucket(focusedT, granularity, dir)
-      if (next === null) return false
-      const first = bucketStart(new Date(dataExtent.minT), granularity).getTime()
-      const last = bucketStart(new Date(dataExtent.maxT), granularity).getTime()
-      return next >= first && next <= last
-    },
-    [focusedT, granularity, dataExtent],
-  )
-  const canPrev = stepInBounds(-1)
-  const canNext = stepInBounds(1)
+  // Can the whole window slide one unit further and still overlap data? The
+  // prev/next buttons stay visible always (see DayStatsCard) but disable at the
+  // data's edges. Based on the window edges, not the focus, so they work whether
+  // or not a single bucket is clicked.
+  const stepBounds = useMemo(() => {
+    if (!dataExtent || granularity === 'all') return null
+    return {
+      first: bucketStart(new Date(dataExtent.minT), granularity).getTime(),
+      last: bucketStart(new Date(dataExtent.maxT), granularity).getTime(),
+    }
+  }, [dataExtent, granularity])
+  const canPrev = !!stepBounds && bucketStart(activeRange.start, granularity).getTime() > stepBounds.first
+  const canNext = !!stepBounds && bucketStart(activeRange.end, granularity).getTime() < stepBounds.last
 
-  // Step the selected period one unit (prev/next): slide the whole window by one
-  // unit (drop a unit off the start, add one to the end) and focus the newly
-  // revealed edge bucket — one commit, so the fresh focus rides with the range.
+  // Step the period one unit (prev/next): slide the whole window by one unit
+  // (drop a unit off the start, add one to the end). If a single bucket is
+  // focused, move the focus to the newly revealed edge in the same commit;
+  // otherwise the whole-range view just pages by one unit.
   const shiftSelection = useCallback(
     (dir: 1 | -1) => {
-      if (focusedT === null || granularity === 'all') return
-      const nextT = stepBucket(focusedT, granularity, dir)
-      if (nextT === null) return
-      commitTime((cur) => ({ range: shiftRangeByUnit(cur.range, cur.gran, dir), gran: cur.gran }), nextT)
+      if (granularity === 'all') return
+      const nextFocus = focusedT !== null ? stepBucket(focusedT, granularity, dir) : null
+      commitTime((cur) => ({ range: shiftRangeByUnit(cur.range, cur.gran, dir), gran: cur.gran }), nextFocus)
     },
     [focusedT, granularity, commitTime],
   )
@@ -1189,6 +1221,29 @@ export function Dashboard() {
                 onChange={changeGranularity}
                 maxLevel={maxLevel}
               />
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Zoom</span>
+                <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
+                  <button
+                    type="button"
+                    onClick={zoomIn}
+                    disabled={!canZoomIn}
+                    title="Zoom in — halve the range around its centre"
+                    className="rounded-md px-3 py-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
+                  >
+                    ＋
+                  </button>
+                  <button
+                    type="button"
+                    onClick={zoomOut}
+                    disabled={!canZoomOut}
+                    title="Zoom out — double the range around its centre"
+                    className="rounded-md px-3 py-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
+                  >
+                    －
+                  </button>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Scale</span>
                 <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
@@ -1390,8 +1445,10 @@ export function Dashboard() {
           title={periodLabel(focusedRange)}
           columns={dayCityColumns}
           onClear={focused ? () => setFocusedT(null) : undefined}
-          onPrev={canPrev ? () => shiftSelection(-1) : undefined}
-          onNext={canNext ? () => shiftSelection(1) : undefined}
+          onPrev={() => shiftSelection(-1)}
+          onNext={() => shiftSelection(1)}
+          canPrev={canPrev}
+          canNext={canNext}
         />
       )}
 
