@@ -33,6 +33,7 @@ import { usePersistedState, setSerde, setMapSerde } from '../hooks/usePersistedS
 import {
   SALES_METRICS,
   buildSalesSeries,
+  meanDailyTotal,
   parseSalesFile,
   salesSelKey,
   salesSeriesId,
@@ -87,10 +88,38 @@ function summarizeWeather(rows: DataRow[], range: DateRange): { label: string; v
   return out
 }
 
+// Raw numeric inputs for the day card's weather glyphs (nice-day face, rain, snow).
+function weatherGlyphInputs(
+  rows: DataRow[],
+  range: DateRange,
+): { niceDay: number | null; rain: number | null; snow: number | null } {
+  const inRange = rows.filter((r) => r.date >= range.start && r.date <= range.end)
+  const agg = (key: string, mode: 'avg' | 'sum'): number | null => {
+    let sum = 0
+    let count = 0
+    for (const r of inRange) {
+      const v = r.values[key]
+      if (typeof v === 'number' && !Number.isNaN(v)) {
+        sum += v
+        count++
+      }
+    }
+    if (count === 0) return null
+    return mode === 'sum' ? sum : sum / count
+  }
+  return { niceDay: agg('nice_day_score_v2', 'avg'), rain: agg('precipitation', 'sum'), snow: agg('snowfall', 'sum') }
+}
+
 const dayFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+const dayFmtWeekday = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+})
 function periodLabel(range: DateRange): string {
-  const s = dayFmt.format(range.start)
-  return range.start.getTime() === range.end.getTime() ? s : `${s} – ${dayFmt.format(range.end)}`
+  if (range.start.getTime() === range.end.getTime()) return dayFmtWeekday.format(range.start) // single day → weekday
+  return `${dayFmt.format(range.start)} – ${dayFmt.format(range.end)}`
 }
 
 // Tier colours matching the chart's event markers (major/notable/minor).
@@ -747,11 +776,47 @@ export function Dashboard() {
       const dsForCity = checkedDatasets.filter((d) => d.city === city)
       const stats = dsForCity.length ? salesStatsInRange(dsForCity, focusedRange) : null
       const st = sheetStates[`${city}-weather`]
-      const weather = st?.status === 'ready' ? summarizeWeather(st.data.rows, focusedRange) : []
-      if (stats || weather.length) cols.push({ city: capitalize(city), stats, weather })
+      const rows = st?.status === 'ready' ? st.data.rows : null
+      const summary = rows ? summarizeWeather(rows, focusedRange) : []
+      const glyphs = rows
+        ? weatherGlyphInputs(rows, focusedRange)
+        : { niceDay: null, rain: null, snow: null }
+      // Money: the period's mean daily takings vs the city's all-time average day.
+      const period = dsForCity.length ? meanDailyTotal(dsForCity, focusedRange) : null
+      const baseline = dsForCity.length ? meanDailyTotal(dsForCity) : null
+      const money = period !== null && baseline !== null ? { period, baseline } : null
+      if (stats || summary.length) {
+        cols.push({
+          city: capitalize(city),
+          stats,
+          weatherText: summary.map((it) => `${it.label}: ${it.value}`).join(' · '),
+          niceDay: glyphs.niceDay,
+          rain: glyphs.rain,
+          snow: glyphs.snow,
+          money,
+        })
+      }
     }
     return cols
   }, [focusedRange, discovery, includedCities, checkedDatasets, sheetStates])
+
+  // Step the selected period back/forward one granularity unit (prev/next day…).
+  const shiftFocus = useCallback(
+    (dir: 1 | -1) => {
+      setFocusedT((cur) => {
+        if (cur === null) return cur
+        const d = new Date(cur)
+        let nd: Date
+        if (granularity === 'day') nd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + dir)
+        else if (granularity === 'week') nd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7 * dir)
+        else if (granularity === 'month') nd = new Date(d.getFullYear(), d.getMonth() + dir, 1)
+        else if (granularity === 'year') nd = new Date(d.getFullYear() + dir, 0, 1)
+        else return cur // 'all' — no stepping
+        return bucketStart(nd, granularity).getTime()
+      })
+    },
+    [granularity],
+  )
 
   // All selected curated events (full history), then range-filtered two ways:
   // markerEvents follows the chart's active range; curatedInRange follows the
@@ -1043,6 +1108,8 @@ export function Dashboard() {
           title={periodLabel(focusedRange)}
           columns={dayCityColumns}
           onClear={() => setFocusedT(null)}
+          onPrev={() => shiftFocus(-1)}
+          onNext={() => shiftFocus(1)}
         />
       )}
 

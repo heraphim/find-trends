@@ -284,6 +284,24 @@ export function salesStatsInRange(datasets: SalesDataset[], range: DateRange): S
   }
 }
 
+// Mean of the per-day totals across the given datasets, optionally within a
+// range. Used to compare a selected day's takings against the city's typical day.
+export function meanDailyTotal(datasets: SalesDataset[], range?: DateRange): number | null {
+  const startT = range?.start.getTime()
+  const endT = range?.end.getTime()
+  const byDay = new Map<number, number>()
+  for (const ds of datasets) {
+    for (const [ts, amt] of ds.tx) {
+      if (range && (ts < startT! || ts > endT!)) continue
+      byDay.set(ts, (byDay.get(ts) ?? 0) + amt)
+    }
+  }
+  if (byDay.size === 0) return null
+  let sum = 0
+  for (const v of byDay.values()) sum += v
+  return sum / byDay.size
+}
+
 // Span of a dataset's dates, for the panel's "2020 – 2024" hint.
 export function datasetSpan(ds: SalesDataset): { start: Date; end: Date } | null {
   if (ds.tx.length === 0) return null

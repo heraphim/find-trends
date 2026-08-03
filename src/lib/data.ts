@@ -91,6 +91,13 @@ const fullDay = new Intl.DateTimeFormat(undefined, {
   month: 'short',
   year: 'numeric',
 })
+// Day tooltip includes the weekday (e.g. "Tue, 12 Mar 2024").
+const fullWeekday = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+})
 
 function axisLabel(d: Date, g: Granularity): string {
   if (g === 'all') return 'All'
@@ -104,7 +111,7 @@ function tooltipLabel(d: Date, g: Granularity): string {
   if (g === 'year') return String(d.getFullYear())
   if (g === 'month') return monthYear.format(d)
   if (g === 'week') return `Week of ${fullDay.format(d)}`
-  return fullDay.format(d)
+  return fullWeekday.format(d) // day → include the weekday
 }
 
 // The {t,label,full} header for a bucket, given its start date. Public so other

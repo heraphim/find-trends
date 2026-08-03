@@ -1,16 +1,22 @@
 import type { SalesStats } from '../lib/sales'
 
-// Sales + weather for one city over the selected period (one card column).
+// Sales + weather glyph inputs for one city over the selected period (one column).
 export interface CityDayStats {
   city: string
   stats: SalesStats | null // null → no sales for this city in the period
-  weather: { label: string; value: string }[]
+  weatherText: string // full weather summary, shown on the smiley's hover ('' if none)
+  niceDay: number | null // nice-day score 0–100 → smiley
+  rain: number | null // precipitation mm → rain icon
+  snow: number | null // snowfall cm → snow icon
+  money: { period: number; baseline: number } | null // day's takings vs the city's average day
 }
 
 interface Props {
-  title: string // the selected period, e.g. "12 Mar 2024"
+  title: string // the selected period, e.g. "Tue, 12 Mar 2024"
   columns: CityDayStats[]
   onClear?: () => void
+  onPrev?: () => void // step the selected period back one unit
+  onNext?: () => void // step it forward one unit
 }
 
 function money(v: number): string {
@@ -19,6 +25,56 @@ function money(v: number): string {
 
 function list(vs: number[]): string {
   return vs.length ? vs.map(money).join(', ') : '—'
+}
+
+// Nice-day score → a face from sad to happy.
+function niceDayFace(score: number): string {
+  if (score >= 80) return '😄'
+  if (score >= 60) return '🙂'
+  if (score >= 40) return '😐'
+  if (score >= 20) return '🙁'
+  return '😞'
+}
+
+function Glyph({ children, title }: { children: string; title: string }) {
+  return (
+    <span title={title} className="cursor-default text-base leading-none">
+      {children}
+    </span>
+  )
+}
+
+// Money vs the city's average day: 💰 with a coloured up/down arrow.
+function MoneyGlyph({ period, baseline }: { period: number; baseline: number }) {
+  const pct = baseline !== 0 ? (period / baseline - 1) * 100 : 0
+  const up = pct >= 10
+  const down = pct <= -10
+  const arrow = up ? '▲' : down ? '▼' : '≈'
+  const color = up ? '#16a34a' : down ? '#dc2626' : '#94a3b8'
+  const sign = pct > 0 ? '+' : ''
+  const title = `${money(period)}/day vs ${money(baseline)} average day (${sign}${pct.toFixed(0)}%)`
+  return (
+    <span title={title} className="inline-flex cursor-default items-center gap-0.5 text-base leading-none">
+      💰<span style={{ color }} className="text-xs font-bold">{arrow}</span>
+    </span>
+  )
+}
+
+function CityIcons({ col }: { col: CityDayStats }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {col.niceDay !== null && (
+        <Glyph title={col.weatherText || `Nice-day score: ${col.niceDay.toFixed(0)}/100`}>
+          {niceDayFace(col.niceDay)}
+        </Glyph>
+      )}
+      {col.rain !== null && col.rain > 0 && (
+        <Glyph title={`Rain: ${col.rain.toFixed(1)} mm`}>{col.rain >= 10 ? '🌧️' : '🌦️'}</Glyph>
+      )}
+      {col.snow !== null && col.snow > 0 && <Glyph title={`Snow: ${col.snow.toFixed(1)} cm`}>❄️</Glyph>}
+      {col.money && <MoneyGlyph period={col.money.period} baseline={col.money.baseline} />}
+    </span>
+  )
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -30,15 +86,35 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function DayStatsCard({ title, columns, onClear }: Props) {
+export function DayStatsCard({ title, columns, onClear, onPrev, onNext }: Props) {
   return (
-    <section className="rounded-2xl border border-blue-200 bg-white p-5 shadow-sm dark:border-blue-500/30 dark:bg-slate-900">
+    <section className="group rounded-2xl border border-blue-200 bg-white p-5 shadow-sm dark:border-blue-500/30 dark:bg-slate-900">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           Selected period
+          {onPrev && (
+            <button
+              type="button"
+              onClick={onPrev}
+              title="Previous"
+              className="rounded border border-slate-300 px-1 text-xs font-medium text-slate-600 opacity-0 transition-opacity hover:bg-slate-100 focus:opacity-100 group-hover:opacity-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              ←
+            </button>
+          )}
           <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
             {title}
           </span>
+          {onNext && (
+            <button
+              type="button"
+              onClick={onNext}
+              title="Next"
+              className="rounded border border-slate-300 px-1 text-xs font-medium text-slate-600 opacity-0 transition-opacity hover:bg-slate-100 focus:opacity-100 group-hover:opacity-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              →
+            </button>
+          )}
         </h2>
         {onClear && (
           <button
@@ -60,7 +136,10 @@ export function DayStatsCard({ title, columns, onClear }: Props) {
               key={col.city}
               className="min-w-[200px] flex-1 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50"
             >
-              <div className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{col.city}</div>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{col.city}</span>
+                <CityIcons col={col} />
+              </div>
 
               {col.stats ? (
                 <div className="flex flex-col text-sm">
@@ -72,21 +151,6 @@ export function DayStatsCard({ title, columns, onClear }: Props) {
                 </div>
               ) : (
                 <p className="text-xs text-slate-400">No sales this period.</p>
-              )}
-
-              {col.weather.length > 0 && (
-                <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-                    {col.weather.map((it) => (
-                      <span key={it.label} className="text-slate-500 dark:text-slate-400">
-                        {it.label}:{' '}
-                        <span className="font-medium tabular-nums text-slate-700 dark:text-slate-200">
-                          {it.value}
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
               )}
             </div>
           ))}
