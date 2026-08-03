@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react'
 import {
   CartesianGrid,
   Legend,
@@ -22,6 +23,14 @@ export interface EventMarker {
   names: string[]
 }
 
+// One curated event with its bucket span (epochs), for the hover tooltip.
+export interface BucketEvent {
+  startT: number
+  endT: number
+  name: string
+  tier: Tier
+}
+
 const TIER_COLOR: Record<Tier, string> = {
   major: '#dc2626',
   notable: '#d97706',
@@ -35,6 +44,26 @@ interface Props {
   percent?: boolean
   onPointClick?: (bucketT: number) => void
   eventMarkers?: EventMarker[]
+  bucketEvents?: BucketEvent[]
+  onZoom?: (startT: number, endT: number) => void
+}
+
+// Read the hovered/active data index out of a recharts mouse-event state.
+// Recharts exposes the active point differently across handlers/versions, so try
+// the index props first, then fall back to matching the active x-axis label.
+function activeIndexOf(state: unknown, data: ChartRow[]): number | null {
+  const s = state as {
+    activeTooltipIndex?: number | string
+    activeIndex?: number | string
+    activeLabel?: string
+  }
+  const i = Number(s?.activeTooltipIndex ?? s?.activeIndex)
+  if (Number.isInteger(i) && i >= 0 && i < data.length) return i
+  if (s?.activeLabel != null) {
+    const j = data.findIndex((r) => r.label === s.activeLabel)
+    if (j >= 0) return j
+  }
+  return null
 }
 
 // A dot + native hover tooltip at the top of an event's reference line.
@@ -70,17 +99,22 @@ function ChartTooltip({
   series,
   colors,
   percent,
+  bucketEvents,
 }: TooltipInjectedProps & {
   series: SeriesSpec[]
   colors: ReturnType<typeof chartColors>
   percent?: boolean
+  bucketEvents?: BucketEvent[]
 }) {
   if (!active || !payload?.length) return null
   const row = (payload[0] as unknown as { payload: ChartRow }).payload
   const full = row.full
   const days = row._days as number | undefined
+  const rowT = row.t as number
   const labelById = new Map(series.map((s) => [s.id, s.label]))
   const unitById = new Map(series.map((s) => [s.id, s.unit]))
+  // Curated events whose bucket span covers the hovered bucket.
+  const events = (bucketEvents ?? []).filter((e) => e.startT <= rowT && rowT <= e.endT)
   return (
     <div
       className="rounded-lg border px-3 py-2 text-xs shadow-lg"
@@ -108,6 +142,19 @@ function ChartTooltip({
           </div>
         ))}
       </div>
+      {events.length > 0 && (
+        <div className="mt-1.5 flex flex-col gap-0.5 border-t pt-1.5" style={{ borderColor: colors.border }}>
+          {events.slice(0, 6).map((e, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="inline-block h-2 w-2 rounded-full" style={{ background: TIER_COLOR[e.tier] }} />
+              <span style={{ color: colors.inkMuted }}>{e.name}</span>
+            </div>
+          ))}
+          {events.length > 6 && (
+            <span style={{ color: colors.inkMuted }}>+{events.length - 6} more</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -119,6 +166,8 @@ export function MultiTrendChart({
   percent,
   onPointClick,
   eventMarkers,
+  bucketEvents,
+  onZoom,
 }: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
@@ -126,22 +175,69 @@ export function MultiTrendChart({
   // With few points, draw dots so single/sparse days are visible.
   const showDots = data.length <= 40
 
+  // Drag-to-zoom: track the selected index span; commit on release.
+  const [drag, setDrag] = useState<{ startIdx: number; endIdx: number } | null>(null)
+  const draggedRef = useRef(false) // suppress the click that ends a drag
+
+  const finishDrag = () => {
+    if (drag && drag.startIdx !== drag.endIdx && onZoom) {
+      const a = data[Math.min(drag.startIdx, drag.endIdx)]?.t
+      const b = data[Math.max(drag.startIdx, drag.endIdx)]?.t
+      if (typeof a === 'number' && typeof b === 'number') {
+        draggedRef.current = true
+        onZoom(a, b)
+      }
+    }
+    setDrag(null)
+  }
+
+  const canZoom = !!onZoom && data.length > 1
+  const dragging = drag !== null && drag.startIdx !== drag.endIdx
+
   return (
-    <div className={'h-96 w-full' + (onPointClick ? ' cursor-pointer' : '')}>
+    <div
+      className={
+        'h-96 w-full' + (canZoom ? ' cursor-crosshair select-none' : onPointClick ? ' cursor-pointer' : '')
+      }
+    >
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={data}
           margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
+          onMouseDown={(state: unknown) => {
+            if (!canZoom) return
+            const idx = activeIndexOf(state, data)
+            if (idx !== null) setDrag({ startIdx: idx, endIdx: idx })
+          }}
+          onMouseMove={(state: unknown) => {
+            if (!drag) return
+            const idx = activeIndexOf(state, data)
+            if (idx !== null && idx !== drag.endIdx) setDrag({ ...drag, endIdx: idx })
+          }}
+          onMouseUp={finishDrag}
+          onMouseLeave={() => setDrag(null)}
           onClick={(state: unknown) => {
-            // recharts v3 passes activeIndex (not activePayload); map it to our row.
-            const idx = Number((state as { activeIndex?: number | string })?.activeIndex)
-            if (Number.isInteger(idx) && idx >= 0 && idx < data.length) {
+            if (draggedRef.current) {
+              draggedRef.current = false
+              return // this "click" was the end of a drag; don't focus a point
+            }
+            const idx = activeIndexOf(state, data)
+            if (idx !== null) {
               const t = data[idx].t
               if (typeof t === 'number') onPointClick?.(t)
             }
           }}
         >
           <CartesianGrid stroke={colors.grid} vertical={false} />
+          {dragging && drag && (
+            <ReferenceArea
+              x1={data[Math.min(drag.startIdx, drag.endIdx)].label}
+              x2={data[Math.max(drag.startIdx, drag.endIdx)].label}
+              fill={colors.axis}
+              fillOpacity={0.15}
+              strokeOpacity={0}
+            />
+          )}
           {eventMarkers?.map((m) =>
             m.startLabel === m.endLabel ? (
               <ReferenceLine
@@ -187,7 +283,7 @@ export function MultiTrendChart({
           />
           <Tooltip
             cursor={{ stroke: colors.axis, strokeDasharray: '3 3' }}
-            content={<ChartTooltip series={series} colors={colors} percent={percent} />}
+            content={<ChartTooltip series={series} colors={colors} percent={percent} bucketEvents={bucketEvents} />}
           />
           <Legend
             formatter={(value: string) => (
