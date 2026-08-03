@@ -48,6 +48,12 @@ jobs:
           set +e   # don't let bash -e abort before we surface diagnostics
           echo "claude version: $(claude --version 2>&1)"
           echo "token present: $([ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && echo yes || echo NO), length: ${#CLAUDE_CODE_OAUTH_TOKEN}"
+          # The API rejected the token as an invalid HEADER value — i.e. it carried
+          # stray whitespace/newlines from copy-paste. Strip all whitespace (a valid
+          # token has none). If the length drops below the raw length, that was it.
+          CLAUDE_CODE_OAUTH_TOKEN="$(printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN" | tr -d '[:space:]')"
+          export CLAUDE_CODE_OAUTH_TOKEN
+          echo "sanitized token length: ${#CLAUDE_CODE_OAUTH_TOKEN}"
           PROMPT="$(cat .github/prompts/generate-events.md)"
           if [ -n "$GUIDANCE" ]; then
             PROMPT="$PROMPT"$'\n\n## Extra guidance for this run\n'"$GUIDANCE"
