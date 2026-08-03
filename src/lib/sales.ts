@@ -255,8 +255,8 @@ export interface SalesStats {
   count: number
   total: number
   average: number
-  min: number
-  max: number
+  low: number[] // up to 3 smallest purchases, ascending
+  high: number[] // up to 3 largest purchases, descending
 }
 
 // Aggregate every purchase within [range] across the given datasets. Used by the
@@ -264,21 +264,24 @@ export interface SalesStats {
 export function salesStatsInRange(datasets: SalesDataset[], range: DateRange): SalesStats | null {
   const startT = range.start.getTime()
   const endT = range.end.getTime()
-  let count = 0
+  const amounts: number[] = []
   let total = 0
-  let min = Infinity
-  let max = -Infinity
   for (const ds of datasets) {
     for (const [ts, amt] of ds.tx) {
       if (ts < startT || ts > endT) continue
-      count++
+      amounts.push(amt)
       total += amt
-      if (amt < min) min = amt
-      if (amt > max) max = amt
     }
   }
-  if (count === 0) return null
-  return { count, total, average: total / count, min, max }
+  if (amounts.length === 0) return null
+  const sorted = [...amounts].sort((a, b) => a - b)
+  return {
+    count: amounts.length,
+    total,
+    average: total / amounts.length,
+    low: sorted.slice(0, 3),
+    high: sorted.slice(-3).reverse(),
+  }
 }
 
 // Span of a dataset's dates, for the panel's "2020 – 2024" hint.

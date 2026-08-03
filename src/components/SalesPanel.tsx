@@ -11,9 +11,17 @@ import {
 interface Props {
   datasets: SalesDataset[]
   selections: Set<string> // `${dsId}::${metric}`
+  includedCities: Set<string> // a dataset only plots if its city is selected
   onUpload: (file: File) => Promise<void> // parse + add (throws with a message)
   onToggle: (dsId: string, metric: (typeof SALES_METRICS)[number]) => void
   onRemove: (dsId: string) => void
+}
+
+// Why a dataset's series are hidden from the chart/stats, if they are.
+function hiddenReason(ds: SalesDataset, includedCities: Set<string>): string | null {
+  if (!ds.city) return 'no city in filename'
+  if (!includedCities.has(ds.city)) return 'city not selected'
+  return null
 }
 
 const spanFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
@@ -24,7 +32,7 @@ function spanLabel(ds: SalesDataset): string {
   return `${spanFmt.format(s.start)} – ${spanFmt.format(s.end)}`
 }
 
-export function SalesPanel({ datasets, selections, onUpload, onToggle, onRemove }: Props) {
+export function SalesPanel({ datasets, selections, includedCities, onUpload, onToggle, onRemove }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -88,6 +96,14 @@ export function SalesPanel({ datasets, selections, onUpload, onToggle, onRemove 
                 <span className="text-[11px] tabular-nums text-slate-400">
                   {ds.tx.length.toLocaleString()} sales · {spanLabel(ds)}
                 </span>
+                {hiddenReason(ds, includedCities) && (
+                  <span
+                    className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
+                    title="This dataset won't plot until its city is selected in the Cities row."
+                  >
+                    hidden · {hiddenReason(ds, includedCities)}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => onRemove(ds.id)}
