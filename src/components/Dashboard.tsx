@@ -1292,14 +1292,12 @@ export function Dashboard() {
                   <MarkerLegend markers={markers} onHover={setHoveredMarker} hoveredKey={hoveredMarker} />
                   {g.correlations.length > 0 && (
                     <div className="mt-2 flex flex-col gap-0.5 text-xs text-slate-500 dark:text-slate-400">
-                      <div className="mb-0.5 font-medium text-slate-600 dark:text-slate-300">
-                        Relations between selected metrics
-                        <span className="ml-1 font-normal opacity-60">
-                          ({g.correlations.length} pair{g.correlations.length === 1 ? '' : 's'}, most positive
-                          first)
-                        </span>
-                      </div>
-                      {g.correlations.map((c, i) => (
+                      {/* Top 3 strongest relations (by |r|), shown most-positive first. */}
+                      {[...g.correlations]
+                        .sort((a, b) => Math.abs(b.r) - Math.abs(a.r))
+                        .slice(0, 3)
+                        .sort((a, b) => b.r - a.r)
+                        .map((c, i) => (
                         <div key={i}>
                           <span className="text-slate-600 dark:text-slate-300">
                             {c.a} ↔ {c.b}
