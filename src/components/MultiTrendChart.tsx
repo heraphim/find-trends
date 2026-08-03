@@ -7,7 +7,6 @@ import {
   Legend,
   Line,
   ReferenceArea,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   usePlotArea,
@@ -60,33 +59,74 @@ function markerKey(m: EventMarker): string {
   return `${m.startLabel}|${m.endLabel}`
 }
 
-// Short vertical notches at the TOP and BOTTOM edges marking each time-unit
-// boundary. Unlike the full-height gridlines (suppressed when dense), these stay
-// on at any density — thinned when boundaries would overlap — so the day/week/
-// month/year limits are always readable. Rendered inside a <Customized> host so
-// the Recharts v3 layout hooks (plot rect + category scale) resolve.
+// The x-positions of the boundaries BETWEEN time units (n buckets → n+1 edges),
+// derived from the bucket centers as the midpoints between adjacent centers.
+// We can't ask the scale for a band's start/end directly: a ComposedChart with
+// no bars uses a `point` scale, where `position:'start'/'middle'/'end'` all
+// collapse to the same center (only a `band` scale, present when sales bars are
+// shown, has a real bandwidth). Midpoints-between-centers give true boundaries
+// for both. The two outer edges are extrapolated (half a step past the first/
+// last center) and clamped to the plot rect.
+function bucketCenters(
+  labels: string[],
+  scale: NonNullable<ReturnType<typeof useXAxisScale>>,
+): number[] {
+  const centers: number[] = []
+  for (const l of labels) {
+    const c = scale(l, { position: 'middle' })
+    if (typeof c === 'number') centers.push(c)
+  }
+  return centers
+}
+function boundariesFromCenters(centers: number[], left: number, right: number): number[] {
+  const n = centers.length
+  if (n === 0) return []
+  if (n === 1) return [left, right]
+  const edges: number[] = new Array(n + 1)
+  for (let i = 1; i < n; i++) edges[i] = (centers[i - 1] + centers[i]) / 2
+  edges[0] = Math.max(left, centers[0] - (centers[1] - centers[0]) / 2)
+  edges[n] = Math.min(right, centers[n - 1] + (centers[n - 1] - centers[n - 2]) / 2)
+  return edges
+}
+
+// Vertical delimiters at each time-unit boundary (the *sides* of every unit, not
+// their centers). Full-height gridlines when the chart is sparse (≤60 buckets);
+// short top/bottom notches — thinned when boundaries would overlap — when dense,
+// so the day/week/month limits stay readable at any density. Rendered inside a
+// <Customized> host so the Recharts v3 layout hooks (plot rect + category scale)
+// resolve.
 const NOTCH = 6 // px
-function UnitTicks({ labels, tickColor }: { labels: string[]; tickColor: string }) {
+function UnitBoundaries({
+  labels,
+  full,
+  gridColor,
+  tickColor,
+}: {
+  labels: string[]
+  full: boolean
+  gridColor: string
+  tickColor: string
+}) {
   const plot = usePlotArea()
   const scale = useXAxisScale()
   if (!plot || typeof scale !== 'function' || labels.length === 0) return null
-
-  // Band edges per unit: `position:'start'` for each, plus the last unit's end.
-  const xs: number[] = []
-  for (const l of labels) {
-    const x = scale(l, { position: 'start' })
-    if (typeof x === 'number') xs.push(x)
-  }
-  const lastEnd = scale(labels[labels.length - 1], { position: 'end' })
-  if (typeof lastEnd === 'number') xs.push(lastEnd)
-  if (xs.length === 0) return null
-  const edges = [...new Set(xs)].sort((a, b) => a - b)
-
+  const edges = boundariesFromCenters(bucketCenters(labels, scale), plot.x, plot.x + plot.width)
+  if (edges.length === 0) return null
   const top = plot.y
   const h = plot.height
+
+  if (full) {
+    return (
+      <g pointerEvents="none">
+        {edges.map((x, i) => (
+          <line key={i} x1={x} x2={x} y1={top} y2={top + h} stroke={gridColor} strokeWidth={1} />
+        ))}
+      </g>
+    )
+  }
+
   const spacing = edges.length > 1 ? plot.width / (edges.length - 1) : plot.width
   const step = spacing > 0 && spacing < 6 ? Math.ceil(6 / spacing) : 1
-
   return (
     <g pointerEvents="none">
       {edges.map((x, i) =>
@@ -97,6 +137,77 @@ function UnitTicks({ labels, tickColor }: { labels: string[]; tickColor: string 
           </g>
         ) : null,
       )}
+    </g>
+  )
+}
+
+// Curated event markers as shaded bands. Each event covers its FULL day-span —
+// start edge of its first bucket to the end edge of its last — so a single-day
+// event fills that whole day exactly like a multi-day event fills its range
+// (rather than a thin mid-unit line). Uses the same boundary geometry as
+// UnitBoundaries so band edges line up with the unit delimiters, and works on
+// both point and band scales. Drawn behind the series (zIndex-0 Customized layer,
+// which paints above the grid but below bars/lines). Event-legend hover glows the
+// matching band (hoveredKey) and dims the rest.
+function EventBands({
+  markers,
+  labels,
+  hoveredKey,
+}: {
+  markers: EventMarker[]
+  labels: string[]
+  hoveredKey?: string | null
+}) {
+  const plot = usePlotArea()
+  const scale = useXAxisScale()
+  if (!plot || typeof scale !== 'function' || markers.length === 0 || labels.length === 0) return null
+  const edges = boundariesFromCenters(bucketCenters(labels, scale), plot.x, plot.x + plot.width)
+  if (edges.length === 0) return null
+  const idxByLabel = new Map(labels.map((l, i) => [l, i]))
+
+  return (
+    <g pointerEvents="none">
+      {markers.map((m) => {
+        const a = idxByLabel.get(m.startLabel)
+        const b = idxByLabel.get(m.endLabel)
+        if (a == null || b == null) return null
+        const lo = Math.min(a, b)
+        const hi = Math.max(a, b)
+        const x1 = edges[lo]
+        const x2 = edges[hi + 1]
+        if (typeof x1 !== 'number' || typeof x2 !== 'number') return null
+        const w = x2 - x1
+        if (w <= 0) return null
+        const k = markerKey(m)
+        const on = hoveredKey === k
+        const dim = hoveredKey != null && !on
+        const color = TIER_COLOR[m.tier]
+        return (
+          <g key={k}>
+            <rect
+              x={x1}
+              y={plot.y}
+              width={w}
+              height={plot.height}
+              fill={color}
+              fillOpacity={dim ? 0.04 : on ? 0.3 : 0.12}
+              stroke={color}
+              strokeOpacity={dim ? 0.1 : on ? 0.8 : 0.35}
+              strokeWidth={1}
+            />
+            <circle
+              cx={(x1 + x2) / 2}
+              cy={plot.y + 4}
+              r={3.5}
+              fill={color}
+              stroke="white"
+              strokeWidth={1}
+              strokeOpacity={dim ? 0.2 : 1}
+              fillOpacity={dim ? 0.2 : 1}
+            />
+          </g>
+        )
+      })}
     </g>
   )
 }
@@ -217,18 +328,6 @@ function activeIndexOf(state: unknown, data: ChartRow[]): number | null {
     if (j >= 0) return j
   }
   return null
-}
-
-// A dot + native hover tooltip at the top of an event's reference line.
-function MarkerLabel(props: { viewBox?: { x?: number; y?: number }; color: string; names: string[] }) {
-  const x = props.viewBox?.x ?? 0
-  const y = props.viewBox?.y ?? 0
-  return (
-    <g>
-      <title>{props.names.join('\n')}</title>
-      <circle cx={x} cy={y + 4} r={3.5} fill={props.color} stroke="white" strokeWidth={1} />
-    </g>
-  )
 }
 
 interface TooltipInjectedProps {
@@ -421,12 +520,21 @@ export function MultiTrendChart({
             }
           }}
         >
-          {/* Vertical lines delimit each time unit; suppressed when dense to avoid
-              a wall of lines (the hover band still highlights units at any density). */}
-          <CartesianGrid stroke={colors.grid} vertical={data.length <= 60} />
-          {/* Always-on top/bottom notches delimiting each time unit. */}
+          {/* Horizontal gridlines only. The vertical unit delimiters are drawn at
+              unit BOUNDARIES (the sides), not the centers Recharts' own vertical
+              grid would use, by UnitBoundaries below. */}
+          <CartesianGrid stroke={colors.grid} vertical={false} />
+          {/* Vertical delimiters at each time-unit boundary: full-height lines
+              when sparse (≤60 buckets), short top/bottom notches when dense. */}
           <Customized
-            component={() => <UnitTicks labels={data.map((d) => d.label)} tickColor={colors.axis} />}
+            component={() => (
+              <UnitBoundaries
+                labels={data.map((d) => d.label)}
+                full={data.length <= 60}
+                gridColor={colors.grid}
+                tickColor={colors.axis}
+              />
+            )}
           />
           {selectedLabel && (
             <Customized
@@ -546,35 +654,19 @@ export function MultiTrendChart({
               isAnimationActive={false}
             />
           )}
-          {/* Event markers last, so they draw ON TOP of the bars and lines.
-              Event-legend hover glows the matching marker and dims the rest. */}
-          {eventMarkers?.map((m) => {
-            const k = markerKey(m)
-            const on = hoveredMarkerKey === k
-            const dim = hoveredMarkerKey != null && !on
-            return m.startLabel === m.endLabel ? (
-              <ReferenceLine
-                key={k}
-                x={m.startLabel}
-                stroke={TIER_COLOR[m.tier]}
-                strokeDasharray={on ? undefined : '3 3'}
-                strokeWidth={on ? 2.5 : 1}
-                strokeOpacity={dim ? 0.15 : on ? 1 : 0.8}
-                label={<MarkerLabel color={TIER_COLOR[m.tier]} names={m.names} />}
-              />
-            ) : (
-              <ReferenceArea
-                key={k}
-                x1={m.startLabel}
-                x2={m.endLabel}
-                fill={TIER_COLOR[m.tier]}
-                fillOpacity={dim ? 0.04 : on ? 0.3 : 0.12}
-                stroke={TIER_COLOR[m.tier]}
-                strokeOpacity={dim ? 0.1 : on ? 0.8 : 0.35}
-                label={<MarkerLabel color={TIER_COLOR[m.tier]} names={m.names} />}
-              />
-            )
-          })}
+          {/* Event markers as shaded full-day bands (single- and multi-day alike),
+              drawn behind the series. Event-legend hover glows the matching band. */}
+          {eventMarkers && eventMarkers.length > 0 && (
+            <Customized
+              component={() => (
+                <EventBands
+                  markers={eventMarkers}
+                  labels={data.map((d) => d.label)}
+                  hoveredKey={hoveredMarkerKey}
+                />
+              )}
+            />
+          )}
         </ComposedChart>
       </ResponsiveContainer>
     </div>
