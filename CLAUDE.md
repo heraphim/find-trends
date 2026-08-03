@@ -54,14 +54,12 @@ Static CSVs in `public/data/`, served from the app's own origin (no external cal
 - `lib/dayFilters.ts` — parse the `days` sheet into filter dimensions (weekend/season/holiday…) + date→attributes map; excludes the redundant `is_weekday` name column.
 - `lib/dateRange.ts` — range math + option lists for the Range picker.
 - `lib/events.ts` — Wikipedia events + heuristic importance scoring (see below).
+- `lib/eventsData.ts` — loads the curated event CSVs in `public/data/events/` (rich schema, ISO dates); `filesForSelection` resolves the `local` source to the included cities' files; `eventTier` maps importance → major/notable/minor; `eventsInRange` filters + sorts.
 - `lib/chartColors.ts` — validated colorblind-safe palette (light/dark).
 - `hooks/useTheme.tsx` — theme context; **dark is default**; no-flash script in `index.html`.
 - `hooks/usePersistedState.ts` — localStorage-backed state; ALL config persists under `ft.*` keys.
 
-Components: `CityControls` (city checkboxes + overlap), `DateRangePicker` (Range: Day/Week/
-Month/Year/All), `GranularityToggle` (Time units, clamped ≤ range), `Sidebar` +
-`DayFilters` (categories + day filters; closable on mobile), `MultiTrendChart` (Recharts;
-click a point → focus events), `EventsPanel`, `BuildInfo`, `ThemeToggle`.
+Layout is a vertical stack: **Cities → CategoryBar → Day-filters row → chart → curated events panel → Wikipedia events panel**. Components: `CityControls` (city checkboxes + overlap), `CategoryBar` (horizontal dropdowns of metric checkboxes per category **+ an Events entry** with Local/Romania/Global source toggles; replaced the old right-hand `Sidebar`, whose file now only holds the shared `SheetState`/`SidebarCategory` types), `DateRangePicker` (Range: Day/Week/Month/Year/All), `GranularityToggle` (Time units, clamped ≤ range), `DayFilters` (own horizontal row), `MultiTrendChart` (Recharts; click a point → focus events; renders curated events as `ReferenceLine` markers via the `eventMarkers` prop), `CuratedEventsPanel` (our events, above Wikipedia), `EventsPanel` (Wikipedia), `BuildInfo`, `ThemeToggle`.
 
 ### Behaviour notes
 

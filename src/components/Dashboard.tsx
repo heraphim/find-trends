@@ -3,6 +3,7 @@ import { fetchSheetData } from '../lib/sheet'
 import {
   aggregateMerged,
   bucketDates,
+  bucketStart,
   bucketToRange,
   rebaseToPercent,
   seriesCorrelations,
@@ -17,16 +18,48 @@ import { capitalize, prettyCategory, seriesLabel } from '../lib/labels'
 import { DEFAULT_SERIES_COLORS } from '../lib/chartColors'
 import { lastNDays, today, type DateRange } from '../lib/dateRange'
 import { fetchDayAttributes, type DayAttributes } from '../lib/dayFilters'
+import {
+  eventTier,
+  eventsInRange,
+  fetchEventFile,
+  filesForSelection,
+  type CuratedEvent,
+  type EventSource,
+} from '../lib/eventsData'
+import type { Tier } from '../lib/events'
 import { usePersistedState, setSerde, setMapSerde } from '../hooks/usePersistedState'
 import { CityControls } from './CityControls'
-import { Sidebar, type SheetState, type SidebarCategory } from './Sidebar'
+import { type SheetState, type SidebarCategory } from './Sidebar'
+import { CategoryBar } from './CategoryBar'
 import { DayFilters } from './DayFilters'
 import { GranularityToggle, GRANULARITY_ORDER } from './GranularityToggle'
 import { DateRangePicker, type RangeMode } from './DateRangePicker'
-import { MultiTrendChart } from './MultiTrendChart'
+import { MultiTrendChart, type EventMarker } from './MultiTrendChart'
+import { CuratedEventsPanel } from './CuratedEventsPanel'
 import { EventsPanel } from './EventsPanel'
 
 type SalesAgg = 'total' | 'average'
+
+// Collapse curated events into per-bucket chart markers: map each event's start
+// to its bucket, keep the strongest tier there, and collect the event names.
+const TIER_RANK: Record<Tier, number> = { minor: 0, notable: 1, major: 2 }
+function buildMarkers(data: ChartRow[], events: CuratedEvent[], g: Granularity): EventMarker[] {
+  const labelByT = new Map<number, string>()
+  for (const r of data) labelByT.set(r.t, r.label)
+  const acc = new Map<string, { tier: Tier; names: string[] }>()
+  for (const ev of events) {
+    const label = labelByT.get(bucketStart(ev.start, g).getTime())
+    if (label === undefined) continue
+    const tier = eventTier(ev.importance)
+    const cur = acc.get(label)
+    if (!cur) acc.set(label, { tier, names: [ev.name] })
+    else {
+      cur.names.push(ev.name)
+      if (TIER_RANK[tier] > TIER_RANK[cur.tier]) cur.tier = tier
+    }
+  }
+  return [...acc].map(([label, v]) => ({ label, tier: v.tier, names: v.names }))
+}
 
 function corrLabel(r: number): string {
   const a = Math.abs(r)
@@ -60,7 +93,8 @@ export function Dashboard() {
   const [rangeMode, setRangeMode] = usePersistedState<RangeMode>('ft.rangeMode', 'month')
   const [salesAgg, setSalesAgg] = usePersistedState<SalesAgg>('ft.salesAgg', 'total')
   const [range, setRange] = useState<DateRange>(() => lastNDays(30)) // derived from range picker
-  const [expanded, setExpanded] = usePersistedState('ft.expanded', new Set<string>(), setSerde)
+  const [eventSources, setEventSources] = usePersistedState('ft.eventSources', new Set<string>(), setSerde)
+  const [eventData, setEventData] = useState<Record<string, CuratedEvent[]>>({})
   // City-category selections keyed by `${category}::${column}`; globals by `${sheet}::${column}`.
   const [citySelections, setCitySelections] = usePersistedState(
     'ft.citySel',
@@ -76,12 +110,11 @@ export function Dashboard() {
     {},
     setMapSerde,
   )
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   // A clicked chart point focuses the events panel on that bucket's period.
   const [focusedT, setFocusedT] = useState<number | null>(null)
 
   const inFlight = useRef<Set<string>>(new Set())
-  const didAutoExpand = useRef(false)
+  const eventInFlight = useRef<Set<string>>(new Set())
 
   // Lazily fetch a sheet's data once.
   const loadSheet = useCallback((sheet: string) => {
@@ -231,12 +264,32 @@ export function Dashboard() {
     for (const key of globalSelections) loadSheet(key.split('::')[0])
   }, [globalSelections, loadSheet])
 
-  // Auto-expand the first city category once.
+  // Files backing the selected event sources ('local' resolves to included cities).
+  const neededEventFiles = useMemo(
+    () => filesForSelection(eventSources, includedCities),
+    [eventSources, includedCities],
+  )
+
+  // Lazily fetch each needed curated-events file once.
   useEffect(() => {
-    if (didAutoExpand.current || cityCatNames.length === 0) return
-    setExpanded((prev) => (prev.size ? prev : new Set([cityCatNames[0]])))
-    didAutoExpand.current = true
-  }, [cityCatNames])
+    for (const spec of neededEventFiles) {
+      if (eventData[spec.file] || eventInFlight.current.has(spec.file)) continue
+      eventInFlight.current.add(spec.file)
+      fetchEventFile(spec)
+        .then((evs) => setEventData((p) => ({ ...p, [spec.file]: evs })))
+        .catch(() => {})
+        .finally(() => eventInFlight.current.delete(spec.file))
+    }
+  }, [neededEventFiles, eventData])
+
+  const toggleEventSource = useCallback((s: EventSource) => {
+    setEventSources((prev) => {
+      const next = new Set(prev)
+      if (next.has(s)) next.delete(s)
+      else next.add(s)
+      return next
+    })
+  }, [])
 
   // Categories for the sidebar: city categories (union across included cities) + globals.
   const categories = useMemo<SidebarCategory[]>(() => {
@@ -309,19 +362,12 @@ export function Dashboard() {
     })
   }, [])
 
-  const toggleExpand = useCallback(
+  // Opening a category's dropdown lazily loads its sheet(s).
+  const onOpenCategory = useCallback(
     (catKey: string) => {
-      setExpanded((prev) => {
-        const next = new Set(prev)
-        if (next.has(catKey)) next.delete(catKey)
-        else {
-          next.add(catKey)
-          if (cityCatNames.includes(catKey)) {
-            for (const city of includedCities) loadSheet(`${city}-${catKey}`)
-          } else loadSheet(catKey)
-        }
-        return next
-      })
+      if (cityCatNames.includes(catKey)) {
+        for (const city of includedCities) loadSheet(`${city}-${catKey}`)
+      } else loadSheet(catKey)
     },
     [cityCatNames, includedCities, loadSheet],
   )
@@ -485,6 +531,26 @@ export function Dashboard() {
   const focusedRange = focusedT !== null ? bucketToRange(focusedT, granularity) : null
   const eventsRange = focusedRange ?? range
 
+  // All selected curated events (full history), then range-filtered two ways:
+  // markerEvents follows the chart's picker range; curatedInRange follows the
+  // panel range (which narrows to a clicked point).
+  const selectedEvents = useMemo(() => {
+    const out: CuratedEvent[] = []
+    for (const spec of neededEventFiles) {
+      const evs = eventData[spec.file]
+      if (evs) out.push(...evs)
+    }
+    return out
+  }, [neededEventFiles, eventData])
+  const markerEvents = useMemo(
+    () => eventsInRange(selectedEvents, range.start, range.end),
+    [selectedEvents, range],
+  )
+  const curatedInRange = useMemo(
+    () => eventsInRange(selectedEvents, eventsRange.start, eventsRange.end),
+    [selectedEvents, eventsRange],
+  )
+
   const chartGroups = useMemo<ChartGroup[]>(() => {
     if (series.length === 0) return []
     if (overlap) return [makeGroup('all', null, series)]
@@ -517,33 +583,39 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* City include-checkboxes + overlap, and a mobile sidebar toggle */}
-      <div className="flex items-stretch gap-3">
-        <div className="min-w-0 flex-1">
-          <CityControls
-            cities={discovery.model.cities}
-            included={includedCities}
-            overlap={overlap}
-            onToggleCity={toggleCity}
-            onToggleOverlap={() => setOverlap((o) => !o)}
-          />
-        </div>
-        <button
-          type="button"
-          onClick={() => setSidebarOpen((o) => !o)}
-          className="shrink-0 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 md:hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-        >
-          {sidebarOpen ? 'Close' : 'Metrics'}
-        </button>
-      </div>
+      {/* Cities → categories bar → day filters, stacked above the chart */}
+      <CityControls
+        cities={discovery.model.cities}
+        included={includedCities}
+        overlap={overlap}
+        onToggleCity={toggleCity}
+        onToggleOverlap={() => setOverlap((o) => !o)}
+      />
 
-      <div className="flex flex-col gap-6 md:flex-row">
-        {/* Chart area */}
-        <section className="flex min-w-0 flex-1 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div>
-            <h2 className="text-lg font-semibold">Trends</h2>
-            <p className="text-xs text-slate-400">Actual values over the selected range.</p>
-          </div>
+      <CategoryBar
+        categories={categories}
+        isSelected={isColSelected}
+        selectedCount={selectedCount}
+        onToggleColumn={toggleColumn}
+        onOpenCategory={onOpenCategory}
+        eventSources={eventSources}
+        onToggleEventSource={toggleEventSource}
+      />
+
+      {dayAttributes && (
+        <DayFilters
+          dimensions={dayAttributes.dimensions}
+          state={filterState}
+          onToggle={toggleFilterValue}
+        />
+      )}
+
+      {/* Chart area (full width) */}
+      <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div>
+          <h2 className="text-lg font-semibold">Trends</h2>
+          <p className="text-xs text-slate-400">Actual values over the selected range.</p>
+        </div>
 
           <div className="flex flex-col gap-3">
             <DateRangePicker
@@ -673,6 +745,7 @@ export function Dashboard() {
                     colorById={resolvedColors}
                     percent={scaleMode === 'percent'}
                     onPointClick={setFocusedT}
+                    eventMarkers={buildMarkers(g.data, markerEvents, granularity)}
                   />
                   {g.correlations.length > 0 && (
                     <div className="mt-2 flex flex-col gap-0.5 text-xs text-slate-500 dark:text-slate-400">
@@ -694,32 +767,16 @@ export function Dashboard() {
               ))}
             </div>
           )}
-        </section>
+      </section>
 
-        {/* Right column: day filters + category sidebar (closable on mobile) */}
-        <div
-          className={
-            (sidebarOpen ? 'flex' : 'hidden') +
-            ' w-full shrink-0 flex-col gap-4 md:flex md:w-72'
-          }
-        >
-          {dayAttributes && (
-            <DayFilters
-              dimensions={dayAttributes.dimensions}
-              state={filterState}
-              onToggle={toggleFilterValue}
-            />
-          )}
-          <Sidebar
-            categories={categories}
-            expanded={expanded}
-            isSelected={isColSelected}
-            selectedCount={selectedCount}
-            onToggleExpand={toggleExpand}
-            onToggleColumn={toggleColumn}
-          />
-        </div>
-      </div>
+      {/* Curated (local/regional) events — our data, above the Wikipedia panel */}
+      <CuratedEventsPanel
+        events={curatedInRange}
+        range={eventsRange}
+        focused={focusedRange !== null}
+        onClear={() => setFocusedT(null)}
+        active={eventSources.size > 0}
+      />
 
       {/* Global events for the selected range, or a clicked point (bottom) */}
       <EventsPanel

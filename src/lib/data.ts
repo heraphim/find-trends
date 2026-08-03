@@ -73,7 +73,7 @@ export function classifyColumns(
 // A fixed epoch so granularity 'all' collapses every row into one bucket.
 const ALL_BUCKET = new Date(2000, 0, 1)
 
-function bucketStart(d: Date, g: Granularity): Date {
+export function bucketStart(d: Date, g: Granularity): Date {
   if (g === 'all') return ALL_BUCKET
   if (g === 'year') return new Date(d.getFullYear(), 0, 1)
   if (g === 'month') return new Date(d.getFullYear(), d.getMonth(), 1)

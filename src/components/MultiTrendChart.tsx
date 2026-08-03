@@ -3,6 +3,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -11,6 +12,19 @@ import {
 import { useTheme } from '../hooks/useTheme'
 import { chartColors } from '../lib/chartColors'
 import type { ChartRow, SeriesSpec } from '../lib/data'
+import type { Tier } from '../lib/events'
+
+export interface EventMarker {
+  label: string // must match a bucket's x-axis label
+  tier: Tier
+  names: string[]
+}
+
+const TIER_COLOR: Record<Tier, string> = {
+  major: '#dc2626',
+  notable: '#d97706',
+  minor: '#94a3b8',
+}
 
 interface Props {
   data: ChartRow[]
@@ -18,6 +32,19 @@ interface Props {
   colorById: Record<string, string>
   percent?: boolean
   onPointClick?: (bucketT: number) => void
+  eventMarkers?: EventMarker[]
+}
+
+// A dot + native hover tooltip at the top of an event's reference line.
+function MarkerLabel(props: { viewBox?: { x?: number; y?: number }; color: string; names: string[] }) {
+  const x = props.viewBox?.x ?? 0
+  const y = props.viewBox?.y ?? 0
+  return (
+    <g>
+      <title>{props.names.join('\n')}</title>
+      <circle cx={x} cy={y + 4} r={3.5} fill={props.color} stroke="white" strokeWidth={1} />
+    </g>
+  )
 }
 
 interface TooltipInjectedProps {
@@ -83,7 +110,14 @@ function ChartTooltip({
   )
 }
 
-export function MultiTrendChart({ data, series, colorById, percent, onPointClick }: Props) {
+export function MultiTrendChart({
+  data,
+  series,
+  colorById,
+  percent,
+  onPointClick,
+  eventMarkers,
+}: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
   const labelById = new Map(series.map((s) => [s.id, s.label]))
@@ -106,6 +140,16 @@ export function MultiTrendChart({ data, series, colorById, percent, onPointClick
           }}
         >
           <CartesianGrid stroke={colors.grid} vertical={false} />
+          {eventMarkers?.map((m) => (
+            <ReferenceLine
+              key={m.label}
+              x={m.label}
+              stroke={TIER_COLOR[m.tier]}
+              strokeDasharray="3 3"
+              strokeOpacity={0.7}
+              label={<MarkerLabel color={TIER_COLOR[m.tier]} names={m.names} />}
+            />
+          ))}
           <XAxis
             dataKey="label"
             tick={{ fill: colors.axis, fontSize: 12 }}

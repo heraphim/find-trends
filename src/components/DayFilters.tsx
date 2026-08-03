@@ -21,17 +21,14 @@ function valueLabel(v: string): string {
 export function DayFilters({ dimensions, state, onToggle }: Props) {
   if (dimensions.length === 0) return null
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-        Day filters
-      </h2>
-      <div className="flex flex-col gap-3">
-        {dimensions.map((dim) => (
-          <div key={dim.column}>
-            <div className="mb-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-              {groupLabel(dim.column)}
-            </div>
-            <div className="flex flex-wrap gap-1">
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Day filters</span>
+      {dimensions.map((dim) => (
+        <div key={dim.column} className="flex items-center gap-2">
+          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            {groupLabel(dim.column)}
+          </span>
+          <div className="flex flex-wrap gap-1">
               {dim.values.map((v) => {
                 const checked = state[dim.column]?.has(v) ?? true
                 return (
@@ -54,10 +51,9 @@ export function DayFilters({ dimensions, state, onToggle }: Props) {
                   </label>
                 )
               })}
-            </div>
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
     </div>
   )
 }
