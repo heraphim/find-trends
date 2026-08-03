@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useChartGestures } from '../hooks/useChartGestures'
 import {
   Bar,
@@ -21,10 +21,12 @@ import type { ChartRow, SeriesSpec } from '../lib/data'
 import type { Tier } from '../lib/events'
 
 export interface EventMarker {
+  key: string // stable identity (span + color) — shared with the marker legend for hover glow
   startLabel: string // bucket label of the event's start (must match an x-axis label)
   endLabel: string // bucket label of the event's end; === startLabel for single-bucket events
   tier: Tier
   names: string[]
+  color?: string // city series color for local events (tinted band); tier color otherwise
 }
 
 // One curated event with its bucket span (epochs), for the hover tooltip.
@@ -39,6 +41,11 @@ const TIER_COLOR: Record<Tier, string> = {
   major: '#dc2626',
   notable: '#d97706',
   minor: '#94a3b8',
+}
+
+// A marker's stable key comes precomputed from buildMarkers (span + color).
+function markerKey(m: EventMarker): string {
+  return m.key
 }
 
 interface Props {
@@ -57,11 +64,6 @@ interface Props {
   onGesturePan?: (fraction: number, phase: 'move' | 'end') => void
   hoveredMarkerKey?: string | null // event-legend hover → glow that marker
   selectedT?: number | null // the clicked/selected bucket, highlighted like hover
-}
-
-// A marker's stable key (must match the event legend's key).
-function markerKey(m: EventMarker): string {
-  return `${m.startLabel}|${m.endLabel}`
 }
 
 // The x-positions of the boundaries BETWEEN time units (n buckets → n+1 edges),
@@ -158,11 +160,14 @@ function EventBands({
   markers,
   labels,
   hoveredKey,
+  hatchInk,
 }: {
   markers: EventMarker[]
   labels: string[]
   hoveredKey?: string | null
+  hatchInk: string // stroke for the overlap hatch patterns
 }) {
+  const uid = useId()
   const plot = usePlotArea()
   const scale = useXAxisScale()
   if (!plot || typeof scale !== 'function' || markers.length === 0 || labels.length === 0) return null
@@ -170,23 +175,58 @@ function EventBands({
   if (edges.length === 0) return null
   const idxByLabel = new Map(labels.map((l, i) => [l, i]))
 
+  // Resolve each marker to its pixel band first, so overlaps can be computed.
+  const bands = markers.flatMap((m) => {
+    const a = idxByLabel.get(m.startLabel)
+    const b = idxByLabel.get(m.endLabel)
+    if (a == null || b == null) return []
+    const lo = Math.min(a, b)
+    const hi = Math.max(a, b)
+    const x1 = edges[lo]
+    const x2 = edges[hi + 1]
+    if (typeof x1 !== 'number' || typeof x2 !== 'number' || x2 - x1 <= 0) return []
+    return [{ m, x1, x2 }]
+  })
+
+  // Sweep-line: cut the x-axis at every band edge; each segment's overlap depth
+  // is how many bands cover it. Depth 2 → one-direction diagonal hatch; 3+ →
+  // cross-hatch — so stacked events read as *distinctly* overlapping rather than
+  // as one darker band.
+  const cuts = [...new Set(bands.flatMap((b) => [b.x1, b.x2]))].sort((a, b) => a - b)
+  const overlaps: { x1: number; x2: number; depth: number }[] = []
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const [sx, ex] = [cuts[i], cuts[i + 1]]
+    const depth = bands.filter((b) => b.x1 < ex && b.x2 > sx).length
+    if (depth >= 2) overlaps.push({ x1: sx, x2: ex, depth })
+  }
+  const h2 = `${uid}h2`
+  const h3 = `${uid}h3`
+
   return (
     <g pointerEvents="none">
-      {markers.map((m) => {
-        const a = idxByLabel.get(m.startLabel)
-        const b = idxByLabel.get(m.endLabel)
-        if (a == null || b == null) return null
-        const lo = Math.min(a, b)
-        const hi = Math.max(a, b)
-        const x1 = edges[lo]
-        const x2 = edges[hi + 1]
-        if (typeof x1 !== 'number' || typeof x2 !== 'number') return null
+      <defs>
+        {/* depth 2: one-direction diagonals */}
+        <pattern id={h2} width={7} height={7} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1={0} y1={0} x2={0} y2={7} stroke={hatchInk} strokeWidth={1} strokeOpacity={0.4} />
+        </pattern>
+        {/* depth 3+: cross-hatch (both diagonals + H/V grid) */}
+        <pattern id={h3} width={8} height={8} patternUnits="userSpaceOnUse">
+          <path
+            d="M0,0 l8,8 M8,0 l-8,8 M0,4 h8 M4,0 v8"
+            stroke={hatchInk}
+            strokeWidth={1}
+            strokeOpacity={0.35}
+            fill="none"
+          />
+        </pattern>
+      </defs>
+      {bands.map(({ m, x1, x2 }) => {
         const w = x2 - x1
-        if (w <= 0) return null
         const k = markerKey(m)
         const on = hoveredKey === k
         const dim = hoveredKey != null && !on
-        const color = TIER_COLOR[m.tier]
+        // Local events tint with their city's series color; others by tier.
+        const color = m.color ?? TIER_COLOR[m.tier]
         return (
           <g key={k}>
             <rect
@@ -213,6 +253,19 @@ function EventBands({
           </g>
         )
       })}
+      {/* Overlap hatching on top of the tinted bands (hidden while a legend
+          entry is hovered, so the glowed band reads clean). */}
+      {hoveredKey == null &&
+        overlaps.map((o, i) => (
+          <rect
+            key={i}
+            x={o.x1}
+            y={plot.y}
+            width={o.x2 - o.x1}
+            height={plot.height}
+            fill={`url(#${o.depth >= 3 ? h3 : h2})`}
+          />
+        ))}
     </g>
   )
 }
@@ -724,6 +777,7 @@ export function MultiTrendChart({
                   markers={eventMarkers}
                   labels={data.map((d) => d.label)}
                   hoveredKey={hoveredMarkerKey}
+                  hatchInk={colors.axis}
                 />
               )}
             />

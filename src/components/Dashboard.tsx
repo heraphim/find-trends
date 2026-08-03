@@ -153,7 +153,7 @@ function MarkerLegend({
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <span className="shrink-0 font-medium text-slate-500 dark:text-slate-400">{label}</span>
       {items.map((m) => {
-        const key = `${m.startLabel}|${m.endLabel}`
+        const key = m.key
         return (
           <span
             key={key}
@@ -164,7 +164,10 @@ function MarkerLegend({
               (hoveredKey === key ? 'bg-slate-200 dark:bg-slate-700' : '')
             }
           >
-            <span className="inline-block h-2 w-2 rounded-full" style={{ background: MARKER_COLOR[m.tier] }} />
+            <span
+              className="inline-block h-2 w-2 rounded-full"
+              style={{ background: m.color ?? MARKER_COLOR[m.tier] }}
+            />
             <span className="tabular-nums text-slate-400">
               {m.startLabel === m.endLabel ? m.startLabel : `${m.startLabel} – ${m.endLabel}`}
             </span>
@@ -198,9 +201,16 @@ function shiftRangeByUnit(r: DateRange, g: Granularity, dir: 1 | -1): DateRange 
 
 // Collapse curated events into chart markers spanning start→end buckets (clamped
 // to the visible range), keeping the strongest tier and collecting event names.
-// Same start & end bucket → a single-bucket marker (rendered as a line).
+// Same start & end bucket → a single-bucket marker (rendered as a line). Events
+// with different colors (e.g. two cities' local events) never merge — each keeps
+// its own marker so the bands overlap visibly (and hatch — see EventBands).
 const TIER_RANK: Record<Tier, number> = { minor: 0, notable: 1, major: 2 }
-function buildMarkers(data: ChartRow[], events: CuratedEvent[], g: Granularity): EventMarker[] {
+function buildMarkers(
+  data: ChartRow[],
+  events: CuratedEvent[],
+  g: Granularity,
+  colorForEvent?: (ev: CuratedEvent) => string | undefined,
+): EventMarker[] {
   if (data.length === 0) return []
   const labelByT = new Map<number, string>()
   let firstT = Infinity
@@ -210,7 +220,7 @@ function buildMarkers(data: ChartRow[], events: CuratedEvent[], g: Granularity):
     if (r.t < firstT) firstT = r.t
     if (r.t > lastT) lastT = r.t
   }
-  const acc = new Map<string, { startLabel: string; endLabel: string; tier: Tier; names: string[] }>()
+  const acc = new Map<string, EventMarker>()
   for (const ev of events) {
     let sT = bucketStart(ev.start, g).getTime()
     let eT = bucketStart(ev.end, g).getTime()
@@ -220,10 +230,11 @@ function buildMarkers(data: ChartRow[], events: CuratedEvent[], g: Granularity):
     const startLabel = labelByT.get(sT)
     const endLabel = labelByT.get(eT)
     if (startLabel === undefined || endLabel === undefined) continue
-    const key = startLabel === endLabel ? startLabel : `${startLabel} ${endLabel}`
+    const color = colorForEvent?.(ev)
+    const key = `${startLabel}|${endLabel}|${color ?? ''}`
     const tier = eventTier(ev.importance)
     const cur = acc.get(key)
-    if (!cur) acc.set(key, { startLabel, endLabel, tier, names: [ev.name] })
+    if (!cur) acc.set(key, { key, startLabel, endLabel, tier, names: [ev.name], color })
     else {
       cur.names.push(ev.name)
       if (TIER_RANK[tier] > TIER_RANK[cur.tier]) cur.tier = tier
@@ -962,6 +973,34 @@ export function Dashboard() {
     return map
   }, [series, salesSeriesIds, colorById])
 
+  // Each city's representative color on the graph — its first plotted line
+  // series, else its first plotted sales series. Local events tint their chart
+  // bands with this (with transparency) so an event visually ties to its city.
+  const cityColors = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const s of series) {
+      const city = parseTabName(s.sheet).city
+      if (city && !map[city] && resolvedColors[s.id]) map[city] = resolvedColors[s.id]
+    }
+    for (const ds of salesDatasets) {
+      if (!ds.city || map[ds.city]) continue
+      for (const m of SALES_METRICS) {
+        const id = salesSeriesId(ds.id, m)
+        if (salesSelections.has(salesSelKey(ds.id, m)) && resolvedColors[id]) {
+          map[ds.city] = resolvedColors[id]
+          break
+        }
+      }
+    }
+    return map
+  }, [series, resolvedColors, salesDatasets, salesSelections])
+
+  // Local events take their city's color; Romania/Global keep the tier colors.
+  const eventColor = useCallback(
+    (ev: CuratedEvent) => (ev.city ? cityColors[ev.city] : undefined),
+    [cityColors],
+  )
+
   // Remove a series: drop its underlying selection.
   const removeSeries = useCallback((s: SeriesSpec) => {
     const tab = parseTabName(s.sheet)
@@ -1504,7 +1543,7 @@ export function Dashboard() {
           ) : (
             <div className="flex flex-col gap-6">
               {chartGroups.map((g) => {
-                const markers = buildMarkers(g.data, markerEvents, granularity)
+                const markers = buildMarkers(g.data, markerEvents, granularity, eventColor)
                 return (
                 <div key={g.key}>
                   {g.title && (
