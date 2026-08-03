@@ -21,7 +21,7 @@ import { columnMeta, metricMeta, type Tier as ColumnTier } from '../lib/metricMe
 import { buildModel, discoverTabNames, parseTabName, type WorkbookModel } from '../lib/workbook'
 import { capitalize, prettyCategory, seriesLabel } from '../lib/labels'
 import { DEFAULT_SERIES_COLORS } from '../lib/chartColors'
-import { lastNDays, today, type DateRange } from '../lib/dateRange'
+import { lastNDays, today, toInputValue, fromInputValue, type DateRange } from '../lib/dateRange'
 import { fetchDayAttributes, type DayAttributes } from '../lib/dayFilters'
 import {
   eventTier,
@@ -32,13 +32,8 @@ import {
   type EventSource,
 } from '../lib/eventsData'
 import type { Tier } from '../lib/events'
-import {
-  usePersistedState,
-  setSerde,
-  setMapSerde,
-  dateRangeSerde,
-  dateRangeArraySerde,
-} from '../hooks/usePersistedState'
+import { usePersistedState, setSerde, setMapSerde } from '../hooks/usePersistedState'
+import { FT_SYNC_EVENT } from '../lib/shareConfig'
 import { useCollapsed } from '../hooks/useCollapsed'
 import { CollapseChevron } from './CollapseChevron'
 import {
@@ -269,19 +264,72 @@ interface ChartGroup {
   correlations: PairCorrelation[]
 }
 
+// ---- Time source of truth: a history stack of {range, granularity} snapshots ----
+//
+// Range + Time unit are the app's single source of truth (see CLAUDE.md). They
+// live together as a history stack: the newest entry is the current window, every
+// range/unit change pushes a new snapshot (deduped, capped at TIME_HISTORY_MAX),
+// and Back pops. Zoom is not a separate concept — it just commits a new range.
+
+type TimeSnap = { range: DateRange; gran: Granularity }
+
+const TIME_HISTORY_MAX = 10
+
+// Persist as [startYmd, endYmd, gran] triples (local yyyy-mm-dd, no UTC drift).
+const timeHistorySerde = {
+  serialize: (h: TimeSnap[]) =>
+    JSON.stringify(h.map((s) => [toInputValue(s.range.start), toInputValue(s.range.end), s.gran])),
+  deserialize: (raw: string): TimeSnap[] =>
+    (JSON.parse(raw) as [string, string, string][])
+      .map(([s, e, g]) => ({
+        range: { start: fromInputValue(s), end: fromInputValue(e) },
+        gran: g as Granularity,
+      }))
+      .filter((s): s is TimeSnap => s.range.start !== null && s.range.end !== null),
+}
+
+// Coarsest granularity level (index into GRANULARITY_ORDER) sensible for a range's
+// span, so the Time-unit toggle can't pick a unit coarser than the window.
+const LEVEL_MIN_DAYS = [1, 7, 28, 365, 365] // day, week, month, year, all
+function maxLevelForRange(r: DateRange): number {
+  const spanDays = Math.round((r.end.getTime() - r.start.getTime()) / 86_400_000) + 1
+  let level = 0
+  for (let i = 1; i < LEVEL_MIN_DAYS.length; i++) if (spanDays >= LEVEL_MIN_DAYS[i]) level = i
+  return level
+}
+function clampGran(g: Granularity, r: DateRange): Granularity {
+  const max = maxLevelForRange(r)
+  return GRANULARITY_ORDER.indexOf(g) > max ? GRANULARITY_ORDER[max] : g
+}
+function sameSnap(a: TimeSnap, b: TimeSnap): boolean {
+  return (
+    a.gran === b.gran &&
+    a.range.start.getTime() === b.range.start.getTime() &&
+    a.range.end.getTime() === b.range.end.getTime()
+  )
+}
+const DEFAULT_SNAP = (): TimeSnap => ({ range: lastNDays(30), gran: 'day' })
+
 export function Dashboard() {
   const [discovery, setDiscovery] = useState<Discovery>({ status: 'loading' })
   // Persisted config — survives reloads (see usePersistedState).
   const [includedCities, setIncludedCities] = usePersistedState('ft.cities', new Set<string>(), setSerde)
   const [overlap, setOverlap] = usePersistedState('ft.overlap', true)
   const [scaleMode, setScaleMode] = usePersistedState<ScaleMode>('ft.scale', 'actual')
-  const [granularity, setGranularity] = usePersistedState<Granularity>('ft.gran', 'day')
   const [rangeMode, setRangeMode] = usePersistedState<RangeMode>('ft.rangeMode', 'month')
   const [salesAgg, setSalesAgg] = usePersistedState<SalesAgg>('ft.salesAgg', 'total')
-  // Persisted so a shared/imported view reproduces the exact time window.
-  const [range, setRange] = usePersistedState<DateRange>('ft.range', () => lastNDays(30), dateRangeSerde) // base range from the picker
-  const [zoomStack, setZoomStack] = usePersistedState<DateRange[]>('ft.zoom', [], dateRangeArraySerde) // drag-zoom overrides on top of the base
-  const activeRange = zoomStack.length ? zoomStack[zoomStack.length - 1] : range
+  // The single source of truth for the time window: a history stack of
+  // {range, granularity} snapshots (newest = current). Every range/unit change
+  // pushes (deduped, capped at TIME_HISTORY_MAX); Back pops. Persisted so a
+  // shared/imported view reproduces the exact window and its history.
+  const [timeHistory, setTimeHistory] = usePersistedState<TimeSnap[]>(
+    'ft.timeHistory',
+    () => [DEFAULT_SNAP()],
+    timeHistorySerde,
+  )
+  const current = timeHistory[timeHistory.length - 1] ?? DEFAULT_SNAP()
+  const activeRange = current.range
+  const granularity = current.gran
   const [eventSources, setEventSources] = usePersistedState('ft.eventSources', new Set<string>(), setSerde)
   const [eventData, setEventData] = useState<Record<string, CuratedEvent[]>>({})
   // City-category selections keyed by `${category}::${column}`; globals by `${sheet}::${column}`.
@@ -306,11 +354,11 @@ export function Dashboard() {
     {},
     setMapSerde,
   )
-  // A clicked chart point focuses the events panel on that bucket's period.
+  // A clicked chart point focuses the events panel + stats card on that bucket;
+  // null means the whole active range (the Selected-period card is never empty).
+  // Focus is reset to null on every range/unit change (baked into commitTime),
+  // except Next/Prev which commit a fresh edge focus alongside the slid range.
   const [focusedT, setFocusedT] = useState<number | null>(null)
-  // Set true just before a prev/next step so the range-change effect below pans
-  // the window without clearing the (deliberately moved) selection.
-  const shiftingRef = useRef(false)
   // Event-legend hover → glow the matching marker on the chart.
   const [hoveredMarker, setHoveredMarker] = useState<string | null>(null)
   // Collapse the whole Trends chart section (controls + chart).
@@ -340,6 +388,14 @@ export function Dashboard() {
         })),
       )
       .finally(() => inFlight.current.delete(sheet))
+  }, [])
+
+  // An imported config snaps the whole time window (via FT_SYNC_EVENT); drop any
+  // stale focus so the Selected-period card reflects the newly-applied range.
+  useEffect(() => {
+    const reset = () => setFocusedT(null)
+    window.addEventListener(FT_SYNC_EVENT, reset)
+    return () => window.removeEventListener(FT_SYNC_EVENT, reset)
   }, [])
 
   // Discover the workbook on mount.
@@ -579,34 +635,57 @@ export function Dashboard() {
     [cityCatNames, includedCities, loadSheet],
   )
 
-  // Changing the range mode clamps the "show in chart" granularity so it can't
-  // be coarser than the window (e.g. Week range → only Days/Weeks selectable).
-  const changeRangeMode = useCallback((m: RangeMode) => {
-    setRangeMode(m)
-    const maxLevel = GRANULARITY_ORDER.indexOf(m)
-    setGranularity((g) =>
-      GRANULARITY_ORDER.indexOf(g) > maxLevel ? GRANULARITY_ORDER[maxLevel] : g,
-    )
-  }, [])
+  // Commit a new time-state snapshot: derive it from the current one, clamp the
+  // granularity to the range's span, dedupe (no repeats in the stack), cap the
+  // history at TIME_HISTORY_MAX (drop oldest), and set the focus — null for a
+  // plain range/unit change, or an edge bucket for a Next/Prev step.
+  const commitTime = useCallback(
+    (next: (cur: TimeSnap) => TimeSnap, focus: number | null = null) => {
+      setTimeHistory((h) => {
+        const cur = h[h.length - 1] ?? DEFAULT_SNAP()
+        const raw = next(cur)
+        const snap: TimeSnap = { range: raw.range, gran: clampGran(raw.gran, raw.range) }
+        if (sameSnap(cur, snap)) return h
+        const deduped = h.filter((s) => !sameSnap(s, snap))
+        const appended = [...deduped, snap]
+        return appended.length > TIME_HISTORY_MAX
+          ? appended.slice(appended.length - TIME_HISTORY_MAX)
+          : appended
+      })
+      setFocusedT(focus)
+    },
+    [setTimeHistory],
+  )
 
-  const maxLevel = GRANULARITY_ORDER.indexOf(rangeMode)
+  // Back: pop the top snapshot (undo the last range/unit change); focus resets.
+  const back = useCallback(() => {
+    setTimeHistory((h) => (h.length > 1 ? h.slice(0, -1) : h))
+    setFocusedT(null)
+  }, [setTimeHistory])
 
-  // The picker owns the base range; choosing a new base clears any drag-zoom.
-  const handleBaseRange = useCallback((r: DateRange) => {
-    setRange(r)
-    setZoomStack([])
-  }, [])
+  // Coarsest selectable Time unit follows the active range's span, not a mode.
+  const maxLevel = maxLevelForRange(activeRange)
 
-  // Drag-zoom on the chart: push the dragged bucket span (as a date range).
+  // The picker emits a new base range; keep the current (clamped) granularity.
+  const setRangeFromPicker = useCallback(
+    (r: DateRange) => commitTime((cur) => ({ range: r, gran: cur.gran })),
+    [commitTime],
+  )
+
+  const changeGranularity = useCallback(
+    (g: Granularity) => commitTime((cur) => ({ range: cur.range, gran: g })),
+    [commitTime],
+  )
+
+  // Drag-zoom on the chart: commit the dragged bucket span as the new range.
   const zoomTo = useCallback(
     (startT: number, endT: number) => {
       const start = bucketToRange(startT, granularity)?.start ?? new Date(startT)
       const end = bucketToRange(endT, granularity)?.end ?? new Date(endT)
-      setZoomStack((s) => [...s, { start, end }])
+      commitTime((cur) => ({ range: { start, end }, gran: cur.gran }))
     },
-    [granularity],
+    [commitTime, granularity],
   )
-  const zoomBack = useCallback(() => setZoomStack((s) => s.slice(0, -1)), [])
 
   const toggleCity = useCallback((city: string) => {
     setIncludedCities((prev) => {
@@ -680,12 +759,9 @@ export function Dashboard() {
     (t: number) => {
       const d = new Date(t)
       const day = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-      setRangeMode('day')
-      setGranularity('day')
-      setRange({ start: day, end: day })
-      setZoomStack([])
+      commitTime(() => ({ range: { start: day, end: day }, gran: 'day' }))
     },
-    [setRangeMode, setGranularity, setRange, setZoomStack],
+    [commitTime],
   )
 
   // Datasets with at least one metric checked (drives the chart + stats card).
@@ -873,26 +949,18 @@ export function Dashboard() {
     [withDayCounts, buildData, scaleMode, salesSelections, activeRange, allowedDates, granularity, rangeSkeleton],
   )
 
-  // A change of range/granularity invalidates the clicked bucket — EXCEPT a
-  // prev/next step, which deliberately pans the window and moves the selection
-  // with it (the ref, set by shiftSelection, is consumed here).
-  useEffect(() => {
-    if (shiftingRef.current) {
-      shiftingRef.current = false
-      return
-    }
-    setFocusedT(null)
-  }, [granularity, activeRange])
-
-  const focusedRange = focusedT !== null ? bucketToRange(focusedT, granularity) : null
-  const eventsRange = focusedRange ?? activeRange
+  // Focus is a single clicked bucket, else the whole active range — so the
+  // Selected-period card + events panels always show *something*. (Range/unit
+  // changes reset focusedT to null inside commitTime, so this tracks the window.)
+  const focusedRange = (focusedT !== null ? bucketToRange(focusedT, granularity) : null) ?? activeRange
+  const focused = focusedT !== null
+  const eventsRange = focusedRange
 
   // Selected-day stats card: one column per included city, each with that city's
   // sales aggregates (checked datasets only) + weather for the clicked period.
   // Non-included cities never appear. Falls back to weather-only columns when no
   // city has sales, so clicking a date still shows the weather.
   const dayCityColumns = useMemo<CityDayStats[]>(() => {
-    if (!focusedRange) return []
     const included =
       discovery.status === 'ready' ? discovery.model.cities.filter((c) => includedCities.has(c)) : []
     const salesCities = included.filter((city) => checkedDatasets.some((d) => d.city === city))
@@ -976,23 +1044,17 @@ export function Dashboard() {
   const canPrev = stepInBounds(-1)
   const canNext = stepInBounds(1)
 
-  // Step the selected period one granularity unit (prev/next) AND pan the whole
-  // chart window by the same unit so the selection stays put on screen. The
-  // shiftingRef tells the range-change effect to keep (not clear) the selection.
+  // Step the selected period one unit (prev/next): slide the whole window by one
+  // unit (drop a unit off the start, add one to the end) and focus the newly
+  // revealed edge bucket — one commit, so the fresh focus rides with the range.
   const shiftSelection = useCallback(
     (dir: 1 | -1) => {
       if (focusedT === null || granularity === 'all') return
       const nextT = stepBucket(focusedT, granularity, dir)
       if (nextT === null) return
-      shiftingRef.current = true
-      setFocusedT(nextT)
-      if (zoomStack.length) {
-        setZoomStack((s) => [...s.slice(0, -1), shiftRangeByUnit(s[s.length - 1], granularity, dir)])
-      } else {
-        setRange((r) => shiftRangeByUnit(r, granularity, dir))
-      }
+      commitTime((cur) => ({ range: shiftRangeByUnit(cur.range, cur.gran, dir), gran: cur.gran }), nextT)
     },
-    [focusedT, granularity, zoomStack.length, setZoomStack, setRange],
+    [focusedT, granularity, commitTime],
   )
 
   // All selected curated events (full history), then range-filtered two ways:
@@ -1095,19 +1157,19 @@ export function Dashboard() {
             </h2>
             {!chartCollapsed && (
               <p className="text-xs text-slate-400">
-                {zoomStack.length > 0
-                  ? 'Zoomed in — drag to zoom further, or step back.'
+                {timeHistory.length > 1
+                  ? 'Drag across the chart to zoom further, or step Back through the range history.'
                   : 'Actual values over the selected range. Drag across the chart to zoom in.'}
               </p>
             )}
           </div>
-          {!chartCollapsed && zoomStack.length > 0 && (
+          {!chartCollapsed && timeHistory.length > 1 && (
             <button
               type="button"
-              onClick={zoomBack}
+              onClick={back}
               className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
-              ← Back{zoomStack.length > 1 ? ` (${zoomStack.length})` : ''}
+              ← Back{timeHistory.length > 2 ? ` (${timeHistory.length - 1})` : ''}
             </button>
           )}
         </div>
@@ -1116,16 +1178,15 @@ export function Dashboard() {
         <>
           <div className="flex flex-col gap-3">
             <DateRangePicker
-              value={range}
-              onChange={handleBaseRange}
+              onChange={setRangeFromPicker}
               bounds={bounds}
               mode={rangeMode}
-              onModeChange={changeRangeMode}
+              onModeChange={setRangeMode}
             />
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
               <GranularityToggle
                 value={granularity}
-                onChange={setGranularity}
+                onChange={changeGranularity}
                 maxLevel={maxLevel}
               />
               <div className="flex items-center gap-2">
@@ -1322,12 +1383,13 @@ export function Dashboard() {
 
       <SalesSummaryPanel datasets={checkedDatasets.filter((d) => d.summary)} onJumpToDay={jumpToDay} />
 
-      {/* Selected-day stats — per-city weather + sales for a clicked point */}
-      {focusedRange && dayCityColumns.length > 0 && (
+      {/* Selected-period stats — per-city weather + sales for the clicked point,
+          or the whole active range when nothing is clicked (never empty). */}
+      {dayCityColumns.length > 0 && (
         <DayStatsCard
           title={periodLabel(focusedRange)}
           columns={dayCityColumns}
-          onClear={() => setFocusedT(null)}
+          onClear={focused ? () => setFocusedT(null) : undefined}
           onPrev={canPrev ? () => shiftSelection(-1) : undefined}
           onNext={canNext ? () => shiftSelection(1) : undefined}
         />
@@ -1337,7 +1399,7 @@ export function Dashboard() {
       <CuratedEventsPanel
         events={curatedInRange}
         range={eventsRange}
-        focused={focusedRange !== null}
+        focused={focused}
         onClear={() => setFocusedT(null)}
         active={eventSources.size > 0}
       />
@@ -1345,7 +1407,7 @@ export function Dashboard() {
       {/* Global events for the selected range, or a clicked point (bottom) */}
       <EventsPanel
         range={eventsRange}
-        focused={focusedRange !== null}
+        focused={focused}
         onClear={() => setFocusedT(null)}
       />
       </div>

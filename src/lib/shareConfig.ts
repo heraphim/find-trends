@@ -17,7 +17,6 @@ export const SHARE_KEYS = [
   'ft.cities',
   'ft.overlap',
   'ft.scale',
-  'ft.gran',
   'ft.rangeMode',
   'ft.salesAgg',
   'ft.eventSources',
@@ -26,8 +25,10 @@ export const SHARE_KEYS = [
   'ft.salesSel',
   'ft.colors',
   'ft.filters',
-  'ft.range',
-  'ft.zoom',
+  // The whole time source of truth: range + granularity history stack (replaces
+  // the old ft.range / ft.zoom / ft.gran keys). ft.rangeMode above is just the
+  // picker's preset UI state and rides along so the shared view shows the same control.
+  'ft.timeHistory',
 ] as const
 
 const SALES_DATA_KEY = 'ft.sales' // never shared
