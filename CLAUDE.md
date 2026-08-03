@@ -82,8 +82,9 @@ REST API), `city-arrivals-annual.csv` (roll-up — Brașov skews *domestic*, for
 year — full top-20 for 2025, top-3/5 for 2020–24), `romania-annual-totals.csv`. **ESTIMATE:**
 `estimate_city_provenance.py` (locals=locals, national-proportion mix with per-year top-3 override, per-city
 **German uplift** for the Saxon heritage, ×real foreign total) → `estimated-city-by-country.csv` (city ×
-year × country). Monthly by-country would split the annual estimate by the real monthly foreign curve — see
-the folder README.
+year × country, annual); `estimate_monthly_by_country.py` spreads that over months by the **real** monthly
+foreign curve → `estimated-city-by-country-monthly.csv` (city × year × month × country; seasonality real,
+country mix held constant within a year). See the folder README.
 
 ## App architecture
 

@@ -23,8 +23,10 @@ table **does not exist in official data** and is **modelled** here (`estimated-*
 | `romania-foreign-by-country.csv` | **REAL** | National foreign arrivals by country & year. Full top-20 for 2025; the persistent top-3/top-5 for 2020–2024 (as INS published them); blanks where a country wasn't broken out that year. |
 | `romania-annual-totals.csv` | **REAL** | National totals per year: total arrivals, foreign %, foreign total (2020 approx). Feeds the share maths. |
 | `fetch_tempo.py` | script | Reproducibly pulls `city-arrivals-monthly.csv` from the Tempo REST API. Re-run to add 2026. |
-| `estimate_city_provenance.py` | script | Reads the real CSVs, applies the model below, writes the estimate. |
-| `estimated-city-by-country.csv` | **ESTIMATE** | Modelled per-country foreign arrivals, per city × year × country. 252 rows. |
+| `estimate_city_provenance.py` | script | Reads the real CSVs, applies the model below, writes the annual estimate. |
+| `estimated-city-by-country.csv` | **ESTIMATE** | Modelled per-country foreign arrivals, per city × year × country (annual). 252 rows. |
+| `estimate_monthly_by_country.py` | script | Spreads the annual estimate over months by the real monthly foreign curve. |
+| `estimated-city-by-country-monthly.csv` | **ESTIMATE** | Modelled per-country foreign arrivals, per city × year × **month** × country. ~3,000 rows. |
 
 ## What the REAL data shows (2020–2025)
 
@@ -62,12 +64,17 @@ Result (estimate): Germany is the largest single foreign origin in both cities e
 national shape. ⚠️ Every number in `estimated-city-by-country.csv` is **modelled, not measured**
 — tune the constants and re-run to test sensitivity.
 
-## Making it monthly (the app-ready form)
+## Monthly by-country (`estimated-city-by-country-monthly.csv`)
 
-`city-arrivals-monthly.csv` is already real monthly **totals** (foreign/Romanian) — directly
-chartable. To get a monthly *by-country* series, split each city's annual per-country estimate
-across months **in proportion to that city's real monthly foreign curve** (in the monthly CSV;
-seasonality is genuine — Jul/Aug peak, Sibiu also December). Ask before building — small.
+Built by `estimate_monthly_by_country.py`: each country's **annual** estimate is spread across
+the 12 months **in proportion to the city's REAL monthly foreign curve** (from
+`city-arrivals-monthly.csv`). So the **seasonality is real** (Jul/Aug peak, Sibiu's December
+Christmas-market bump, the 2020 COVID collapse) and per city-year the months sum exactly to the
+annual estimate. **Caveat:** the country *mix* is held constant within each year — every
+nationality is assumed to follow the same month-shape, so this does **not** capture that (say)
+Israelis skew summer while Germans skew December. Fixing that would need per-country monthly data,
+which INS doesn't publish. `city-arrivals-monthly.csv` itself (real monthly foreign/Romanian
+totals) remains the ground-truth series to chart.
 
 ## Sources
 
