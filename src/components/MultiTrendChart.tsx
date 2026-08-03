@@ -100,6 +100,40 @@ function UnitTicks({ labels, tickColor }: { labels: string[]; tickColor: string 
   )
 }
 
+// Recharts draws a vertical *line* cursor for a ComposedChart (the rectangle
+// band branch in its Cursor is BarChart-only), so hovering a unit would show a
+// thin mid-line. This custom cursor paints the whole hovered time-unit band
+// instead. Recharts clones the element with `points` (the line's top/bottom
+// endpoints, centered on the hovered unit) and `offset` (the plot rect); we
+// widen that into a band `plotWidth / bucketCount` across, clamped to the plot
+// so edge units don't spill past the axis.
+function BandCursor(props: {
+  bucketCount: number
+  fill: string
+  fillOpacity: number
+  points?: { x: number; y: number }[]
+  offset?: { left: number; width: number }
+}) {
+  const { bucketCount, fill, fillOpacity, points, offset } = props
+  if (!points || points.length < 2 || !offset || bucketCount <= 0) return null
+  const band = offset.width / bucketCount
+  const left = Math.max(offset.left, points[0].x - band / 2)
+  const right = Math.min(offset.left + offset.width, points[0].x + band / 2)
+  const width = right - left
+  if (width <= 0) return null
+  return (
+    <rect
+      x={left}
+      y={points[0].y}
+      width={width}
+      height={points[1].y - points[0].y}
+      fill={fill}
+      fillOpacity={fillOpacity}
+      pointerEvents="none"
+    />
+  )
+}
+
 // Sales bars sit in the lower band of the plot: give them a dedicated (hidden)
 // axis whose top is padded well above the data so the tallest bar reaches only
 // ~1/3 of the height, leaving the upper area for the trend lines.
@@ -366,10 +400,10 @@ export function MultiTrendChart({
           />
           {/* Hidden axis that keeps sales bars in the lower band of the plot. */}
           {barIds.length > 0 && <YAxis yAxisId="sales" hide domain={barDomain} />}
-          {/* Category x-axis → Recharts renders the cursor as a band, so a fill
-              highlights the whole hovered time unit (not just a line). */}
+          {/* A ComposedChart's built-in cursor is a vertical line; BandCursor
+              paints the whole hovered time-unit band instead (not just a line). */}
           <Tooltip
-            cursor={{ fill: colors.axis, fillOpacity: 0.12 }}
+            cursor={<BandCursor bucketCount={data.length} fill={colors.axis} fillOpacity={0.12} />}
             content={
               <ChartTooltip
                 series={allSeries}
