@@ -611,7 +611,7 @@ export function MultiTrendChart({
   }, [])
   useEffect(() => {
     if (!pointerRef.current) return
-    const raf = requestAnimationFrame(() => {
+    const replay = () => {
       const p = pointerRef.current
       const el = wrapRef.current
       if (!p || !el) return
@@ -627,8 +627,18 @@ export function MultiTrendChart({
           clientY: p.y,
         }),
       )
-    })
-    return () => cancelAnimationFrame(raf)
+    }
+    // First replay next frame (fast path) — but Recharts updates its scale store
+    // in PASSIVE effects that flush after paint, so an early replay computes the
+    // hover index against the OLD axis (a zoom burst then shows a bucket from a
+    // stale window — dates jump years at the same pixel). Re-assert once more
+    // after the store has settled so the tooltip matches the pixel it's over.
+    const raf = requestAnimationFrame(replay)
+    const settle = window.setTimeout(replay, 80)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(settle)
+    }
   }, [data])
 
   // Let a drag finish even when released outside the plot: while a drag is active,

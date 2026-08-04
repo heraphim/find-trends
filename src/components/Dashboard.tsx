@@ -1493,6 +1493,12 @@ export function Dashboard() {
     return groups
   }, [series, salesSeriesIds, salesDatasets, salesSelections, overlap, makeGroup, discovery, includedCities, datasetVisible, eventsActive, activeRange, granularity])
 
+  // Dev-only debug hook: expose the computed chart groups so the resolved rows
+  // (bucket order, per-bucket values) can be inspected from the console.
+  if (import.meta.env.DEV) {
+    ;(window as unknown as Record<string, unknown>).__ft_chartGroups = chartGroups
+  }
+
   if (discovery.status === 'loading') {
     return <div className="py-20 text-center text-slate-400">Loading workbook…</div>
   }
