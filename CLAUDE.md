@@ -130,6 +130,23 @@ Layout: the **controls live in a slide-in `SidebarDrawer`** on the left (Categor
 
 ## Pending / ideas
 
+- **Sidebar filtering rework — per-CSV panels replace categories (SPEC AGREED 2026-08-04, not built):**
+  drop the category concept in the drawer; each data CSV gets its own small panel (small title).
+  One row per **main** column: a checkbox; when ticked, a **dropdown appears next to it**, default
+  **"All"** (= no filtering). The other dropdown options (per-column names + thresholds, e.g.
+  none / any amount / medium / heavy) are **deliberately undecided** — refine later, column by column.
+  An **arrow at the bottom of the panel** expands the **advanced** set (this replaces the old
+  corner collapse/expand arrow, which goes away). Advanced rows = **every other column of that CSV —
+  nothing is removed from the app** (v1 scores, helpers, all of it) — shown as **checkbox only, no
+  filter dropdown** (dropdowns are a main-row feature). User-picked main rows:
+  - *brasov-weather / sibiu-weather* (same set): `snowfall`, `nice_day_score_v2`, `nice_day_label_v2`, `rain_score_v2`
+  - *commodities*: `Brent_close`, `EuroGas_close`, `Gold_close`
+  - *euro*: `eur_ron`, `big_move`
+  - *days*: `is_holiday`, `weekday`, `month`, `day` — the days panel is the filter panel: weekday
+    replaces the weekend toggle, month replaces season (and allows cross-year "all Decembers"),
+    day-of-month enables salary-days filtering (e.g. 1st–10th).
+  Next step before building: choose the dropdown option lists + thresholds per main column with the user.
+
 - ~~**Range + Time unit as the single source of truth (architectural)**~~ — **SHIPPED.** The two time controls now live together as one history stack `ft.timeHistory` (`{range, gran}` snapshots, deduped, capped at 10) that is the sole time authority — see "Time source of truth" above. Zoom folded into it (drag-zoom = commit a new range; Back pops); `rangeMode` demoted to picker preset-UI; granularity clamps to the range's real span; focus defaults to the whole range (Selected-period card always shown) and resets on every time change except Next/Prev (slide window + set edge focus in one commit). Removed the old `ft.range`/`ft.zoom`/`ft.gran` keys and the `shiftingRef` hack.
 - **Sales comparison views** — upload + bottom-of-chart bars + the selected-period stats card now ship (`lib/sales.ts`, `SalesPanel`, `DayStatsCard`). Still to do: dedicated **scatter + r** and a **correlation ranking** across factors. (Money figures now carry a **`RON`** suffix.)
 - **Event overlays** on the chart from day-classifier columns (`season`, `nice_day_label`, `weather_code`, etc.).
