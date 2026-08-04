@@ -64,6 +64,7 @@ interface Props {
   onGesturePan?: (fraction: number, phase: 'move' | 'end') => void
   hoveredMarkerKey?: string | null // event-legend hover → glow that marker
   selectedT?: number | null // the clicked/selected bucket, highlighted like hover
+  highlightIds?: string[] | null // correlation-row hover → glow these series, dim the rest
 }
 
 // The x-positions of the boundaries BETWEEN time units (n buckets → n+1 edges),
@@ -496,6 +497,7 @@ export function MultiTrendChart({
   onGesturePan,
   hoveredMarkerKey,
   selectedT,
+  highlightIds,
 }: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
@@ -526,9 +528,14 @@ export function MultiTrendChart({
 
   // Legend hover → "glow" the hovered series (emphasise it, dim the rest).
   const [hoveredSeries, setHoveredSeries] = useState<string | null>(null)
+  // External highlight (hovering a correlation row glows both of its series)
+  // takes precedence over the single legend-hovered series.
+  const external = highlightIds && highlightIds.length > 0 ? highlightIds : null
   // Emphasis for a series id given what (if anything) is hovered.
-  const seriesEmphasis = (id: string): 'on' | 'off' | 'dim' =>
-    hoveredSeries === null ? 'off' : hoveredSeries === id ? 'on' : 'dim'
+  const seriesEmphasis = (id: string): 'on' | 'off' | 'dim' => {
+    if (external) return external.includes(id) ? 'on' : 'dim'
+    return hoveredSeries === null ? 'off' : hoveredSeries === id ? 'on' : 'dim'
+  }
   // With few points, draw dots so single/sparse days are visible.
   const showDots = data.length <= 40
 

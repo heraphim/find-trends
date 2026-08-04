@@ -1,4 +1,5 @@
 import { capitalize } from './labels'
+import { parseTabName } from './workbook'
 
 // How prominent a column is in the UI:
 //  - primary : shown in the category dropdown by default
@@ -145,4 +146,74 @@ export function columnMeta(column: string): { label: string; tier: Tier } {
   if (ev) return ev
   const m = metricMeta(column)
   return { label: m.label, tier: m.tier }
+}
+
+// ---- "Obvious pair" correlation exclusions ---------------------------------
+//
+// Weather columns in the same family measure (or are scored from) the same
+// physical quantity, so their correlation is definitional, not a discovery.
+// Sunshine sits in the precipitation family: sunny ⇔ not raining is the same
+// axis. 'composite' scores are built from ALL the other weather columns, so
+// they pair obviously with every same-city weather column.
+const WEATHER_CORR_FAMILY: Record<string, string> = {
+  temp_max: 'temp',
+  temp_min: 'temp',
+  temp_mean: 'temp',
+  apparent_temp_max: 'temp',
+  apparent_temp_min: 'temp',
+  ideal_temp: 'temp',
+  temp_score: 'temp',
+  comfort_score_v2: 'temp',
+
+  precipitation: 'precip',
+  rain: 'precip',
+  snowfall: 'precip',
+  rain_score: 'precip',
+  rain_score_v2: 'precip',
+  snow_bonus: 'precip',
+  sunshine_percentage: 'precip',
+
+  wind_max: 'wind',
+  wind_mean: 'wind',
+  wind_score: 'wind',
+  wind_score_v2: 'wind',
+
+  nice_day_score: 'composite',
+  outdoor_score: 'composite',
+  nice_day_score_v2: 'composite',
+  outdoor_score_v2: 'composite',
+  hazard_factor: 'composite',
+}
+
+// A value column and its own derivative share a family (skipped on the same
+// sheet): eur_ron ↔ change_pct, <name>_close ↔ <name>_change_pct.
+function derivedFamily(column: string): string | null {
+  if (column === 'eur_ron' || column === 'change_pct') return 'eurron'
+  const c = parseCommodity(column)
+  return c ? c.instrument : null
+}
+
+// True when two series' correlation is a foregone conclusion and should not be
+// computed/shown: weather across cities (meteorology — nearby cities always
+// agree), same-city weather within a family or against a composite score, and
+// a value vs. its own %-change. Cross-category pairs are never excluded —
+// weather ↔ sales / FX / commodities is the whole point of the app.
+export function isObviousPair(
+  a: { sheet: string; column: string },
+  b: { sheet: string; column: string },
+): boolean {
+  const wa = parseTabName(a.sheet).category === 'weather'
+  const wb = parseTabName(b.sheet).category === 'weather'
+  if (wa && wb) {
+    if (a.sheet !== b.sheet) return true
+    const fa = WEATHER_CORR_FAMILY[a.column]
+    const fb = WEATHER_CORR_FAMILY[b.column]
+    if (fa === 'composite' || fb === 'composite') return true
+    return fa != null && fa === fb
+  }
+  if (a.sheet === b.sheet) {
+    const fa = derivedFamily(a.column)
+    return fa != null && fa === derivedFamily(b.column)
+  }
+  return false
 }

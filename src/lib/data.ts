@@ -281,18 +281,24 @@ export function pearson(xs: number[], ys: number[]): number | null {
 export interface PairCorrelation {
   a: string
   b: string
+  aId: string // series ids, so hovering a relation can highlight its pair on the chart
+  bId: string
   r: number
   n: number
 }
 
 // Pairwise correlations between series, on points where both have a value.
+// `exclude` skips pairs whose relation is a foregone conclusion (derived/same-
+// quantity columns — see isObviousPair in metricMeta).
 export function seriesCorrelations(
   rows: ChartRow[],
-  series: { id: string; label: string }[],
+  series: Pick<SeriesSpec, 'id' | 'label' | 'sheet' | 'column'>[],
+  exclude?: (a: { sheet: string; column: string }, b: { sheet: string; column: string }) => boolean,
 ): PairCorrelation[] {
   const out: PairCorrelation[] = []
   for (let i = 0; i < series.length; i++) {
     for (let j = i + 1; j < series.length; j++) {
+      if (exclude?.(series[i], series[j])) continue
       const xs: number[] = []
       const ys: number[] = []
       for (const r of rows) {
@@ -304,7 +310,15 @@ export function seriesCorrelations(
         }
       }
       const r = pearson(xs, ys)
-      if (r !== null) out.push({ a: series[i].label, b: series[j].label, r, n: xs.length })
+      if (r !== null)
+        out.push({
+          a: series[i].label,
+          b: series[j].label,
+          aId: series[i].id,
+          bId: series[j].id,
+          r,
+          n: xs.length,
+        })
     }
   }
   // Order by how positive the relation is: most positive first, most negative

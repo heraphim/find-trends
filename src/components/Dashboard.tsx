@@ -17,7 +17,7 @@ import {
   type PairCorrelation,
   type SeriesSpec,
 } from '../lib/data'
-import { columnMeta, metricMeta, type Tier as ColumnTier } from '../lib/metricMeta'
+import { columnMeta, isObviousPair, metricMeta, type Tier as ColumnTier } from '../lib/metricMeta'
 import { buildModel, discoverTabNames, parseTabName, type WorkbookModel } from '../lib/workbook'
 import { capitalize, prettyCategory, seriesLabel } from '../lib/labels'
 import { DEFAULT_SERIES_COLORS } from '../lib/chartColors'
@@ -561,6 +561,8 @@ export function Dashboard() {
   const [focusedT, setFocusedT] = useState<number | null>(null)
   // Event-legend hover → glow the matching marker on the chart.
   const [hoveredMarker, setHoveredMarker] = useState<string | null>(null)
+  // Hovered correlation row → glow that pair of series on its group's chart.
+  const [hoveredCorr, setHoveredCorr] = useState<{ group: string; ids: string[] } | null>(null)
   // Collapse the whole Trends chart section (controls + chart).
   const [chartCollapsed, toggleChart] = useCollapsed('trends')
   // The controls drawer (categories + day filters + sales). Ephemeral — opens
@@ -1182,7 +1184,13 @@ export function Dashboard() {
       const lineActual = buildData(specs)
       const sales = buildSalesSeries(datasets, salesSelections, activeRange, allowedDates, granularity)
       const amountBars = sales.series.filter((s) => s.column === 'amount')
-      const correlations = seriesCorrelations(mergeRowsByT(lineActual, sales.rows), [...specs, ...amountBars])
+      // Obvious pairs (derived/same-quantity columns, cross-city weather) are
+      // skipped up front — see isObviousPair.
+      const correlations = seriesCorrelations(
+        mergeRowsByT(lineActual, sales.rows),
+        [...specs, ...amountBars],
+        isObviousPair,
+      )
       const displayLine =
         scaleMode === 'percent' ? rebaseToPercent(lineActual, specs.map((s) => s.id)) : lineActual
       // Start from the range skeleton so the time axis is complete even when the
@@ -1534,6 +1542,9 @@ export function Dashboard() {
             <div className="flex flex-col gap-6">
               {chartGroups.map((g) => {
                 const markers = buildMarkers(g.data, markerEvents, granularity, eventColor)
+                // Only moderate-or-stronger relations are worth showing; the list
+                // arrives sorted most-positive → most-negative, keep that order.
+                const shownCorrs = g.correlations.filter((c) => Math.abs(c.r) >= 0.4)
                 return (
                 <div key={g.key}>
                   {g.title && (
@@ -1555,17 +1566,24 @@ export function Dashboard() {
                     onGesturePan={panGesture}
                     hoveredMarkerKey={hoveredMarker}
                     selectedT={focusedT}
+                    highlightIds={hoveredCorr && hoveredCorr.group === g.key ? hoveredCorr.ids : null}
                   />
                   <MarkerLegend markers={markers} onHover={setHoveredMarker} hoveredKey={hoveredMarker} />
-                  {g.correlations.length > 0 && (
-                    <div className="mt-2 flex flex-col gap-0.5 text-xs text-slate-500 dark:text-slate-400">
-                      {/* Top 3 strongest relations (by |r|), shown most-positive first. */}
-                      {[...g.correlations]
-                        .sort((a, b) => Math.abs(b.r) - Math.abs(a.r))
-                        .slice(0, 3)
-                        .sort((a, b) => b.r - a.r)
-                        .map((c, i) => (
-                        <div key={i}>
+                  {/* All moderate-or-stronger relations, most-positive first.
+                      Hovering a row glows its two series on the chart. */}
+                  {shownCorrs.length > 0 ? (
+                    <div
+                      className={`mt-2 grid grid-cols-1 gap-x-6 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400 ${
+                        shownCorrs.length > 6 ? 'md:grid-cols-2' : ''
+                      }`}
+                    >
+                      {shownCorrs.map((c, i) => (
+                        <div
+                          key={i}
+                          className="-mx-1 cursor-default rounded px-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          onMouseEnter={() => setHoveredCorr({ group: g.key, ids: [c.aId, c.bId] })}
+                          onMouseLeave={() => setHoveredCorr(null)}
+                        >
                           <span className="text-slate-600 dark:text-slate-300">
                             {c.a} ↔ {c.b}
                           </span>
@@ -1577,6 +1595,12 @@ export function Dashboard() {
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    g.correlations.length > 0 && (
+                      <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                        No moderate or stronger relations in this window.
+                      </div>
+                    )
                   )}
                 </div>
                 )
