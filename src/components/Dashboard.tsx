@@ -1459,25 +1459,16 @@ export function Dashboard() {
       {/* Chart area — full width (spans the page), moved above the controls */}
       <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:p-5 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="flex items-center gap-2 text-lg font-semibold">
-              <CollapseChevron collapsed={chartCollapsed} onClick={toggleChart} label="trends chart" />
-              Trends
-              {chartCollapsed && (
-                <span className="text-xs font-medium text-slate-400">
-                  {series.length + salesSeriesIds.length} series
-                  {markerEvents.length > 0 ? ` · ${markerEvents.length} events` : ''}
-                </span>
-              )}
-            </h2>
-            {!chartCollapsed && (
-              <p className="text-xs text-slate-400">
-                {timeHistory.length > 1
-                  ? 'Drag across the chart to zoom further, or step Back through the range history.'
-                  : 'Actual values over the selected range. Drag across the chart to zoom in.'}
-              </p>
+          <h2 className="flex items-center gap-2 text-lg font-semibold">
+            <CollapseChevron collapsed={chartCollapsed} onClick={toggleChart} label="trends chart" />
+            Trends
+            {chartCollapsed && (
+              <span className="text-xs font-medium text-slate-400">
+                {series.length + salesSeriesIds.length} series
+                {markerEvents.length > 0 ? ` · ${markerEvents.length} events` : ''}
+              </span>
             )}
-          </div>
+          </h2>
           {!chartCollapsed && timeHistory.length > 1 && (
             <button
               type="button"
@@ -1491,93 +1482,6 @@ export function Dashboard() {
 
         {!chartCollapsed && (
         <>
-          <div className="flex flex-col gap-3">
-            <DateRangePicker
-              onChange={setRangeFromPicker}
-              bounds={bounds}
-              mode={rangeMode}
-              onModeChange={setRangeMode}
-            />
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-              <GranularityToggle
-                value={granularity}
-                onChange={changeGranularity}
-                maxLevel={maxLevel}
-              />
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Zoom</span>
-                <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
-                  <button
-                    type="button"
-                    onClick={zoomIn}
-                    disabled={!canZoomIn}
-                    title="Zoom in — shrink to one unit, then switch to a finer unit"
-                    className="rounded-md px-3 py-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
-                  >
-                    ＋
-                  </button>
-                  <button
-                    type="button"
-                    onClick={zoomOut}
-                    disabled={!canZoomOut}
-                    title="Zoom out — double the range (within the data's span)"
-                    className="rounded-md px-3 py-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
-                  >
-                    －
-                  </button>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Scale</span>
-                <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
-                  {([
-                    ['actual', 'Actual'],
-                    ['percent', '% change'],
-                  ] as const).map(([v, l]) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setScaleMode(v)}
-                      aria-pressed={scaleMode === v}
-                      className={
-                        'rounded-md px-3 py-1 text-sm font-medium transition-colors ' +
-                        (scaleMode === v
-                          ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
-                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100')
-                      }
-                    >
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Values
-                </span>
-                <div className="inline-flex gap-3 text-sm">
-                  {(['total', 'average'] as const).map((v) => (
-                    <label
-                      key={v}
-                      className="flex cursor-pointer items-center gap-1.5"
-                      title="Applies to sales data (coming soon); all other data averages"
-                    >
-                      <input
-                        type="radio"
-                        name="salesAgg"
-                        checked={salesAgg === v}
-                        onChange={() => setSalesAgg(v)}
-                        className="accent-blue-600"
-                      />
-                      <span className="capitalize text-slate-600 dark:text-slate-300">{v}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
           {totalMatchingDays !== null && (
             <p className="text-xs text-slate-500 dark:text-slate-400">
               <span className="font-semibold text-slate-700 dark:text-slate-200">
@@ -1679,6 +1583,93 @@ export function Dashboard() {
               })}
             </div>
           )}
+          {/* Time + scale controls — under the graph */}
+          <div className="flex flex-col gap-3">
+            <DateRangePicker
+              onChange={setRangeFromPicker}
+              bounds={bounds}
+              mode={rangeMode}
+              onModeChange={setRangeMode}
+            />
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <GranularityToggle
+                value={granularity}
+                onChange={changeGranularity}
+                maxLevel={maxLevel}
+              />
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Zoom</span>
+                <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
+                  <button
+                    type="button"
+                    onClick={zoomIn}
+                    disabled={!canZoomIn}
+                    title="Zoom in — shrink to one unit, then switch to a finer unit"
+                    className="rounded-md px-3 py-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
+                  >
+                    ＋
+                  </button>
+                  <button
+                    type="button"
+                    onClick={zoomOut}
+                    disabled={!canZoomOut}
+                    title="Zoom out — double the range (within the data's span)"
+                    className="rounded-md px-3 py-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
+                  >
+                    －
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Scale</span>
+                <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
+                  {([
+                    ['actual', 'Actual'],
+                    ['percent', '% change'],
+                  ] as const).map(([v, l]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setScaleMode(v)}
+                      aria-pressed={scaleMode === v}
+                      className={
+                        'rounded-md px-3 py-1 text-sm font-medium transition-colors ' +
+                        (scaleMode === v
+                          ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100')
+                      }
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Values
+                </span>
+                <div className="inline-flex gap-3 text-sm">
+                  {(['total', 'average'] as const).map((v) => (
+                    <label
+                      key={v}
+                      className="flex cursor-pointer items-center gap-1.5"
+                      title="Applies to sales data (coming soon); all other data averages"
+                    >
+                      <input
+                        type="radio"
+                        name="salesAgg"
+                        checked={salesAgg === v}
+                        onChange={() => setSalesAgg(v)}
+                        className="accent-blue-600"
+                      />
+                      <span className="capitalize text-slate-600 dark:text-slate-300">{v}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </>
         )}
       </section>

@@ -8,7 +8,8 @@ import { formatRelative } from '../lib/relativeTime'
 //             desktop: copies the URL (…?s=<config>) to the clipboard.
 //  • Theme  — light/dark toggle.
 //  • Deploy — "DEPLOYED" label above a live "X ago" timestamp.
-//  • Expand — chevron opening a panel with Copy/Paste settings + commit time.
+//  • Expand — chevron sliding out commit info + copy/paste-settings icons
+//             inline, between "Deployed" and the chevron.
 // The uploaded sales data is never included in the shared config; pasted
 // sales-metric selections only take effect for datasets the recipient already
 // has locally (see shareConfig).
@@ -31,6 +32,20 @@ function RelativeTime({ iso }: { iso: string }) {
     >
       {formatRelative(iso)}
     </time>
+  )
+}
+
+// The "DEPLOYED / X ago" two-line block; commit info reuses the same look.
+function TimeBlock({ label, iso }: { label: string; iso: string }) {
+  return (
+    <div className="flex flex-col items-start px-2 leading-tight">
+      <span className="text-[8px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+        {label}
+      </span>
+      <span className="whitespace-nowrap text-xs">
+        <RelativeTime iso={iso} />
+      </span>
+    </div>
   )
 }
 
@@ -93,60 +108,24 @@ export function FloatingMenu() {
   }
 
   const iconBtn =
-    'inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors ' +
+    'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors ' +
     'hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100'
-
-  const panelBtn =
-    'flex-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 ' +
-    'hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
-
-  const statusLine = status && (
-    <span
-      role="status"
-      className={
-        'text-xs font-medium ' +
-        (status.tone === 'ok'
-          ? 'text-emerald-600 dark:text-emerald-400'
-          : 'text-red-600 dark:text-red-400')
-      }
-    >
-      {status.text}
-    </span>
-  )
 
   return (
     <div className="fixed bottom-4 right-4 z-40">
-      {open && (
-        <div className="absolute bottom-full right-0 mb-2 w-64 rounded-xl border border-slate-200 bg-white/90 p-3 shadow-lg backdrop-blur-sm dark:border-slate-700 dark:bg-slate-800/90">
-          {status && <div className="mb-2">{statusLine}</div>}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onCopy}
-              className={panelBtn}
-              title="Copy all settings to the clipboard"
-            >
-              Copy settings
-            </button>
-            <button
-              type="button"
-              onClick={onPaste}
-              className={panelBtn}
-              title="Apply settings from the clipboard (accepts a settings string or a share link)"
-            >
-              Paste settings
-            </button>
-          </div>
-          <div className="mt-2.5 flex items-center justify-between text-xs">
-            <span className="text-slate-400 dark:text-slate-500">Commit</span>
-            <RelativeTime iso={__COMMIT_DATE__} />
-          </div>
-        </div>
-      )}
-
-      {!open && status && (
+      {status && (
         <div className="absolute bottom-full right-0 mb-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 shadow-lg backdrop-blur-sm dark:border-slate-700 dark:bg-slate-800/90">
-          {statusLine}
+          <span
+            role="status"
+            className={
+              'text-xs font-medium ' +
+              (status.tone === 'ok'
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-red-600 dark:text-red-400')
+            }
+          >
+            {status.text}
+          </span>
         </div>
       )}
 
@@ -215,21 +194,65 @@ export function FloatingMenu() {
           )}
         </button>
 
-        <div className="flex flex-col items-start px-2 leading-tight">
-          <span className="text-[8px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-            Deployed
-          </span>
-          <span className="text-xs">
-            <RelativeTime iso={__BUILD_DATE__} />
-          </span>
-        </div>
+        <TimeBlock label="Deployed" iso={__BUILD_DATE__} />
+
+        {open && (
+          <>
+            <TimeBlock label="Commit" iso={__COMMIT_DATE__} />
+
+            <button
+              type="button"
+              onClick={onCopy}
+              aria-label="Copy settings"
+              title="Copy all settings to the clipboard"
+              className={iconBtn}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4"
+              >
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={onPaste}
+              aria-label="Paste settings"
+              title="Apply settings from the clipboard (accepts a settings string or a share link)"
+              className={iconBtn}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4"
+              >
+                <rect x="8" y="2" width="8" height="4" rx="1" />
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                <path d="M12 11v6M9 14l3 3 3-3" />
+              </svg>
+            </button>
+          </>
+        )}
 
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? 'Collapse menu' : 'Expand menu'}
           aria-expanded={open}
-          title={open ? 'Collapse' : 'More (copy/paste settings)'}
+          title={open ? 'Collapse' : 'More (commit info, copy/paste settings)'}
           className={iconBtn}
         >
           <svg
@@ -240,9 +263,9 @@ export function FloatingMenu() {
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className={'h-4 w-4 transition-transform ' + (open ? 'rotate-180' : '')}
+            className="h-4 w-4"
           >
-            <path d="m18 15-6-6-6 6" />
+            {open ? <path d="m9 18 6-6-6-6" /> : <path d="m15 18-6-6 6-6" />}
           </svg>
         </button>
       </div>
