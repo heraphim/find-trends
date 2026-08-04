@@ -427,7 +427,29 @@ export function meanDailyTotal(datasets: SalesDataset[], range?: DateRange): num
 }
 
 // Span of a dataset's dates, for the panel's "2020 – 2024" hint.
+// Min/max sale epochs WITHOUT assuming tx order — legacy persisted data may be
+// unsorted (the load-time repair in Dashboard re-sorts it, but never trust it).
+export function saleExtent(tx: Purchase[]): { first: number; last: number } | null {
+  if (tx.length === 0) return null
+  let first = tx[0][0]
+  let last = tx[0][0]
+  for (const [t] of tx) {
+    if (t < first) first = t
+    if (t > last) last = t
+  }
+  return { first, last }
+}
+
+export function isSortedByDate(tx: Purchase[]): boolean {
+  for (let i = 1; i < tx.length; i++) if (tx[i][0] < tx[i - 1][0]) return false
+  return true
+}
+
 export function datasetSpan(ds: SalesDataset): { start: Date; end: Date } | null {
-  if (ds.tx.length === 0) return null
-  return { start: new Date(ds.tx[0][0]), end: new Date(ds.tx[ds.tx.length - 1][0]) }
+  const ext = saleExtent(ds.tx)
+  if (!ext) return null
+  return {
+    start: new Date(ds.firstSaleT ?? ext.first),
+    end: new Date(ds.lastSaleT ?? ext.last),
+  }
 }

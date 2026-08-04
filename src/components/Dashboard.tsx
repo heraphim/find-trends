@@ -42,7 +42,9 @@ import {
   SALES_SUMMARY_VERSION,
   buildSalesSeries,
   computeSalesSummary,
+  isSortedByDate,
   meanDailyTotal,
+  saleExtent,
   parseSalesFile,
   salesSelKey,
   salesSeriesId,
@@ -973,25 +975,32 @@ export function Dashboard() {
     })
   }, [])
 
-  // Backfill summaries + first/last-sale dates for datasets persisted before
-  // they shipped (or after a version bump). Runs once per stale set; writes back
-  // so it isn't recomputed.
+  // Backfill/repair persisted datasets on load: summaries + first/last-sale
+  // dates for data saved before they shipped (or after a version bump), and an
+  // UNSORTED tx re-sort — legacy merges could persist out-of-order tx, which
+  // poisoned every ends-based read (span label, first/last sale, zoom clamp).
+  // Runs once per stale set; writes back so it isn't recomputed.
   useEffect(() => {
     const stale = (d: SalesDataset) =>
-      d.summary?.version !== SALES_SUMMARY_VERSION || d.firstSaleT == null || d.lastSaleT == null
+      d.summary?.version !== SALES_SUMMARY_VERSION ||
+      d.firstSaleT == null ||
+      d.lastSaleT == null ||
+      !isSortedByDate(d.tx)
     if (!salesDatasets.some(stale)) return
     setSalesDatasets((prev) =>
-      prev.map((d) =>
-        stale(d)
-          ? {
-              ...d,
-              firstSaleT: d.tx[0]?.[0] ?? d.firstSaleT,
-              lastSaleT: d.tx[d.tx.length - 1]?.[0] ?? d.lastSaleT,
-              summary:
-                d.summary?.version === SALES_SUMMARY_VERSION ? d.summary : computeSalesSummary(d.tx),
-            }
-          : d,
-      ),
+      prev.map((d) => {
+        if (!stale(d)) return d
+        const tx = isSortedByDate(d.tx) ? d.tx : [...d.tx].sort((a, b) => a[0] - b[0])
+        const ext = saleExtent(tx)
+        return {
+          ...d,
+          tx,
+          firstSaleT: ext?.first ?? d.firstSaleT,
+          lastSaleT: ext?.last ?? d.lastSaleT,
+          summary:
+            d.summary?.version === SALES_SUMMARY_VERSION ? d.summary : computeSalesSummary(tx),
+        }
+      }),
     )
   }, [salesDatasets, setSalesDatasets])
 
