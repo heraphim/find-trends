@@ -1665,23 +1665,20 @@ export function Dashboard() {
               })}
             </div>
           )}
-          {/* Time + scale controls — under the graph. Range + Time units share a
-              line on big screens and stack on mobile. */}
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col items-start gap-3 md:flex-row md:flex-wrap md:items-center md:gap-x-6">
-              <DateRangePicker
-                onChange={setRangeFromPicker}
-                bounds={bounds}
-                mode={rangeMode}
-                onModeChange={setRangeMode}
-              />
-              <GranularityToggle
-                value={granularity}
-                onChange={changeGranularity}
-                maxLevel={maxLevel}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          {/* Time + scale controls — under the graph. All groups share one
+              wrapping line on big screens and stack on mobile. */}
+          <div className="flex flex-col items-start gap-3 md:flex-row md:flex-wrap md:items-center md:gap-x-6 md:gap-y-2">
+            <DateRangePicker
+              onChange={setRangeFromPicker}
+              bounds={bounds}
+              mode={rangeMode}
+              onModeChange={setRangeMode}
+            />
+            <GranularityToggle
+              value={granularity}
+              onChange={changeGranularity}
+              maxLevel={maxLevel}
+            />
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Zoom</span>
                 <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
@@ -1690,7 +1687,7 @@ export function Dashboard() {
                     onClick={zoomIn}
                     disabled={!canZoomIn}
                     title="Zoom in — shrink to one unit, then switch to a finer unit"
-                    className="rounded-md px-3 py-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
+                    className="rounded px-2 py-0.5 text-xs font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
                   >
                     ＋
                   </button>
@@ -1699,7 +1696,7 @@ export function Dashboard() {
                     onClick={zoomOut}
                     disabled={!canZoomOut}
                     title="Zoom out — double the range (within the data's span)"
-                    className="rounded-md px-3 py-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
+                    className="rounded px-2 py-0.5 text-xs font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
                   >
                     －
                   </button>
@@ -1718,7 +1715,7 @@ export function Dashboard() {
                       onClick={() => setScaleMode(v)}
                       aria-pressed={scaleMode === v}
                       className={
-                        'rounded-md px-3 py-1 text-sm font-medium transition-colors ' +
+                        'rounded px-2 py-0.5 text-xs font-medium transition-colors ' +
                         (scaleMode === v
                           ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
                           : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100')
@@ -1734,7 +1731,7 @@ export function Dashboard() {
                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                   Values
                 </span>
-                <div className="inline-flex gap-3 text-sm">
+                <div className="inline-flex gap-3 text-xs">
                   {(['total', 'average'] as const).map((v) => (
                     <label
                       key={v}
@@ -1753,7 +1750,6 @@ export function Dashboard() {
                   ))}
                 </div>
               </div>
-            </div>
           </div>
         </>
         )}
