@@ -236,8 +236,8 @@ function buildMarkers(
     const endLabel = labelByT.get(eT)
     if (startLabel === undefined || endLabel === undefined) continue
     const color = colorForEvent?.(ev)
-    // Identity by the t-span, not the display labels — year-less labels repeat
-    // across years, which used to merge same-dated events of different years.
+    // Identity by the t-span, not the display labels — duplicate labels used
+    // to merge same-dated events of different years.
     const key = `${sT}|${eT}|${color ?? ''}`
     const tier = eventTier(ev.importance)
     const cur = acc.get(key)

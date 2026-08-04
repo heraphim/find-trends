@@ -77,9 +77,9 @@ interface Props {
 // shown, has a real bandwidth). Midpoints-between-centers give true boundaries
 // for both. The two outer edges are extrapolated (half a step past the first/
 // last center) and clamped to the plot rect.
-// Keyed by bucket `t` (the axis dataKey) — NOT the display label: year-less
-// labels repeat across a filtered multi-year window ("Jun 1" 2020 vs 2026), and
-// an ordinal scale maps duplicate keys to the FIRST occurrence's position.
+// Keyed by bucket `t` (the axis dataKey) — NOT the display label: an ordinal
+// scale maps duplicate keys to the FIRST occurrence's position, so identity
+// must be the unique `t` (labels are display text, not identity).
 function bucketCenters(
   ts: number[],
   scale: NonNullable<ReturnType<typeof useXAxisScale>>,
@@ -512,7 +512,7 @@ export function MultiTrendChart({
   // The selected bucket (if it's on this axis) → a persistent highlight band.
   const selectedOnAxis = selectedT != null && data.some((d) => d.t === selectedT) ? selectedT : null
   // Axis ticks are keyed by the unique bucket `t`; this maps them back to the
-  // year-less display label.
+  // display label.
   const labelByT = new Map(data.map((d) => [d.t, d.label]))
   const bars = barSeries ?? []
   const allSeries = [...series, ...bars]
@@ -751,10 +751,9 @@ export function MultiTrendChart({
             />
           )}
           <XAxis
-            // Keyed by the unique bucket `t` — NOT the year-less display label:
-            // labels repeat across a filtered multi-year window ("Jun 1" 2020 vs
-            // 2026), and Recharts resolves duplicate categories to the FIRST
-            // occurrence (hover/active-dot/markers all landed on the wrong year).
+            // Keyed by the unique bucket `t` — NOT the display label: Recharts
+            // resolves duplicate categories to the FIRST occurrence
+            // (hover/active-dot/markers all landed on the wrong year).
             dataKey="t"
             type="category"
             tickFormatter={(t) => labelByT.get(Number(t)) ?? ''}

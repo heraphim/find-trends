@@ -85,7 +85,6 @@ export function bucketStart(d: Date, g: Granularity): Date {
 }
 
 const monthYear = new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' })
-const dayMonth = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' })
 const fullDay = new Intl.DateTimeFormat(undefined, {
   day: 'numeric',
   month: 'short',
@@ -103,7 +102,7 @@ function axisLabel(d: Date, g: Granularity): string {
   if (g === 'all') return 'All'
   if (g === 'year') return String(d.getFullYear())
   if (g === 'month') return monthYear.format(d)
-  return dayMonth.format(d)
+  return fullDay.format(d) // day/week → include the year
 }
 
 function tooltipLabel(d: Date, g: Granularity): string {
