@@ -23,6 +23,7 @@ import { capitalize, prettyCategory, seriesLabel } from '../lib/labels'
 import { DEFAULT_SERIES_COLORS } from '../lib/chartColors'
 import { lastNDays, today, toInputValue, fromInputValue, type DateRange } from '../lib/dateRange'
 import { fetchDayAttributes, type DayAttributes } from '../lib/dayFilters'
+import { daysPanelActive, daysPanelAllows, defaultDaysPanel, type DaysPanelState } from '../lib/daysPanel'
 import {
   eventTier,
   eventsInRange,
@@ -54,6 +55,7 @@ import { type SheetState, type SidebarCategory } from './Sidebar'
 import { SidebarDrawer } from './SidebarDrawer'
 import { CategoryBar } from './CategoryBar'
 import { DayFilters } from './DayFilters'
+import { DaysPanel } from './DaysPanel'
 import { SalesPanel } from './SalesPanel'
 import { SalesSummaryPanel } from './SalesSummaryPanel'
 import { DayStatsCard, type CityDayStats } from './DayStatsCard'
@@ -554,6 +556,8 @@ export function Dashboard() {
     {},
     setMapSerde,
   )
+  // The new per-CSV Days panel (filtering rework) — first panel in the drawer.
+  const [daysPanel, setDaysPanel] = usePersistedState<DaysPanelState>('ft.daysPanel', defaultDaysPanel)
   // A clicked chart point focuses the events panel + stats card on that bucket;
   // null means the whole active range (the Selected-period card is never empty).
   // Focus is reset to null on every range/unit change (baked into commitTime),
@@ -676,7 +680,8 @@ export function Dashboard() {
     const anyUnchecked = dayAttributes.dimensions.some(
       (d) => (filterState[d.column]?.size ?? d.values.length) < d.values.length,
     )
-    if (!anyUnchecked) return null
+    const panelActive = daysPanelActive(daysPanel)
+    if (!anyUnchecked && !panelActive) return null
     const allowed = new Set<number>()
     for (const [epoch, attrs] of dayAttributes.byDate) {
       let pass = true
@@ -688,10 +693,11 @@ export function Dashboard() {
           break
         }
       }
+      if (pass && panelActive && !daysPanelAllows(daysPanel, epoch, attrs)) pass = false
       if (pass) allowed.add(epoch)
     }
     return allowed
-  }, [dayAttributes, filterState])
+  }, [dayAttributes, filterState, daysPanel])
 
   // Distinct city-category names (e.g. ['weather']) and the set of valid sheets.
   const cityCatNames = useMemo(() => {
@@ -1701,6 +1707,8 @@ export function Dashboard() {
       {/* Controls drawer — categories, day filters, sales. Floating ☰ opens it
           on mobile; hovering the left edge opens it on bigger screens. */}
       <SidebarDrawer open={drawerOpen} onOpen={() => setDrawerOpen(true)} onClose={() => setDrawerOpen(false)}>
+        <DaysPanel state={daysPanel} onChange={setDaysPanel} />
+
         <CategoryBar
           categories={categories}
           isSelected={isColSelected}

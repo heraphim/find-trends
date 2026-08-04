@@ -145,7 +145,17 @@ Layout: the **controls live in a slide-in `SidebarDrawer`** on the left (Categor
   - *days*: `is_holiday`, `weekday`, `month`, `day` — the days panel is the filter panel: weekday
     replaces the weekend toggle, month replaces season (and allows cross-year "all Decembers"),
     day-of-month enables salary-days filtering (e.g. 1st–10th).
-  Next step before building: choose the dropdown option lists + thresholds per main column with the user.
+  Next step before building the rest: choose the dropdown option lists + thresholds per main column with the user.
+  **Days panel first cut SHIPPED** (`DaysPanel.tsx` + `lib/daysPanel.ts`, state `ft.daysPanel` — in
+  `SHARE_KEYS`): first panel in the drawer; four rows, each a checkbox that opens its control
+  *under* the row — Public holiday → "Is holiday"/"Is not holiday" pills; Day of week → Mo..Su
+  pills; Month → Jan..Dec pills; Day of month → **circular two-handle slider** over the 31 day
+  slots (clockwise arc lo→hi, wraps past 31→1 so 25–5 = salary period; centre shows "lo – hi" +
+  day count). Opening a row starts with everything checked (= no filter); unchecking the row
+  resets it entirely. Filters compose into the existing `allowedDates` memo (`daysPanelActive`/
+  `daysPanelAllows` — weekday/month/day derive from the date, holiday reads the days-sheet attrs).
+  The old `DayFilters` row still renders below (weekend/season/holiday) — to be folded into the
+  per-CSV panels as the rework continues.
 
 - ~~**Range + Time unit as the single source of truth (architectural)**~~ — **SHIPPED.** The two time controls now live together as one history stack `ft.timeHistory` (`{range, gran}` snapshots, deduped, capped at 10) that is the sole time authority — see "Time source of truth" above. Zoom folded into it (drag-zoom = commit a new range; Back pops); `rangeMode` demoted to picker preset-UI; granularity clamps to the range's real span; focus defaults to the whole range (Selected-period card always shown) and resets on every time change except Next/Prev (slide window + set edge focus in one commit). Removed the old `ft.range`/`ft.zoom`/`ft.gran` keys and the `shiftingRef` hack.
 - **Sales comparison views** — upload + bottom-of-chart bars + the selected-period stats card now ship (`lib/sales.ts`, `SalesPanel`, `DayStatsCard`). Still to do: dedicated **scatter + r** and a **correlation ranking** across factors. (Money figures now carry a **`RON`** suffix.)
