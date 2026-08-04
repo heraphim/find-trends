@@ -355,16 +355,11 @@ function startOfDay(t: number): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }
 // --- Zoom helpers: zoom is modelled as the NUMBER OF WHOLE UNITS on screen, not a
-// raw span. Zoom-in reduces that count toward the anchored unit then drills to the
-// finer granularity; zoom-out grows it then steps up to the coarser one. This keeps
-// zoom snapped to clean unit boundaries and always making progress (see zoomInSnap /
-// zoomOutSnap below). ---
+// raw span. Zoom-in reduces that count toward the anchored unit, then (at one unit)
+// drills to the finer granularity; zoom-out grows the count but KEEPS the unit. This
+// keeps zoom snapped to clean unit boundaries and always making progress (see
+// zoomInSnap / zoomOutSnap below). ---
 
-// The next COARSER unit (day → week → month → year), capped at year — never 'all'.
-function coarserGran(g: Granularity): Granularity | null {
-  const i = GRANULARITY_ORDER.indexOf(g)
-  return i >= 0 && i < 3 ? GRANULARITY_ORDER[i + 1] : null
-}
 // How many whole buckets the range spans at granularity g (≥ 1).
 function unitsInRange(r: DateRange, g: Granularity): number {
   if (g === 'all') return 1
@@ -403,15 +398,6 @@ function anchorIndex(firstStartT: number, anchorT: number, g: Granularity): numb
     if (idx > 200_000) break
   }
   return idx
-}
-// How many g-units fill one full coarser unit at the anchor (12 months/yr,
-// ~4-6 weeks/mo, 7 days/wk) — the threshold at which zoom-out steps up a level.
-function finerPerCoarser(r: DateRange, g: Granularity, anchor: number): number {
-  const coarser = coarserGran(g)
-  if (!coarser) return Infinity
-  const anchorT = r.start.getTime() + anchor * (r.end.getTime() - r.start.getTime())
-  const cb = bucketToRange(bucketStart(new Date(anchorT), coarser).getTime(), coarser)
-  return cb ? unitsInRange(cb, g) : Infinity
 }
 const clampInt = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v)
 
@@ -481,20 +467,21 @@ function zoomInSnap(
   let nNew = Math.round(N * factor)
   if (nNew >= N) nNew = N - 1 // guarantee progress
   if (nNew < 1) nNew = 1
-  const anchorT = r.start.getTime() + anchor * (r.end.getTime() - r.start.getTime())
+  // Index-based anchoring: the chart's X is a CATEGORY axis (equal-width slots), so
+  // the bucket under the cursor is `floor(anchor * count)`. Keep that same bucket in
+  // the same pixel slot after zooming, so the pointed day/week/month stays put.
   const firstStart = bucketStart(r.start, g).getTime()
-  const aIdx = anchorIndex(firstStart, anchorT, g)
-  const left = clampInt(Math.round(aIdx - anchor * (nNew - 1)), 0, N - nNew)
+  const aIdx = clampInt(Math.floor(anchor * N), 0, N - 1)
+  const slot = clampInt(Math.floor(anchor * nNew), 0, nNew - 1)
+  const left = clampInt(aIdx - slot, 0, N - nNew)
   const ls = nthBucketFrom(firstStart, g, left)
   const re = nthBucketFrom(ls, g, nNew - 1)
   const end = bucketToRange(re, g)?.end ?? new Date(re)
   return { range: clampRange({ start: new Date(ls), end }, zb), gran: g }
 }
-// Zoom-out step: the mirror of zoom-in. Grow the number of whole units about the
-// `anchor`; once the window holds a full coarser unit — or fills a partial unit at
-// the data's edge — step up to the coarser granularity (year ← month ← week ← day),
-// collapsing months back into their year, weeks into their month. `factor` (> 1)
-// sets how fast the unit count grows.
+// Zoom-out step: grow the number of whole units on screen about the `anchor`,
+// KEEPING the current granularity (never coarsens — the unit only ever changes on
+// zoom-in). Clamped to the data bounds; a no-op once it already spans everything.
 function zoomOutSnap(
   cur: TimeSnap,
   factor: number,
@@ -502,32 +489,7 @@ function zoomOutSnap(
   zb: { min: Date; max: Date },
 ): TimeSnap {
   const { range: r, gran: g } = cur
-  const anchorT = r.start.getTime() + anchor * (r.end.getTime() - r.start.getTime())
-  const coarser = coarserGran(g)
-  if (coarser) {
-    // Step up a level when the window already holds a full coarser unit's worth of
-    // units, or (at the data edge) fills a partial coarser unit it sits inside.
-    const fullInterior = unitsInRange(r, g) >= finerPerCoarser(r, g, anchor)
-    let fillsEdge = false
-    if (spansOneBucket(r, coarser)) {
-      const cb = bucketToRange(bucketStart(r.start, coarser).getTime(), coarser)
-      if (cb) {
-        const lo = Math.max(cb.start.getTime(), startOfDay(zb.min.getTime()).getTime())
-        const hi = Math.min(cb.end.getTime(), startOfDay(zb.max.getTime()).getTime())
-        fillsEdge =
-          bucketStart(r.start, g).getTime() <= bucketStart(new Date(lo), g).getTime() &&
-          bucketStart(r.end, g).getTime() >= bucketStart(new Date(hi), g).getTime()
-      }
-    }
-    if (fullInterior || fillsEdge) {
-      // Coarsen to the FULL coarser unit at the anchor (not clamped to the data), so
-      // the coarser granularity stays valid even at a partial data-edge unit —
-      // clampGran needs at least one whole unit's span.
-      const cb = bucketToRange(bucketStart(new Date(anchorT), coarser).getTime(), coarser)
-      if (cb) return { range: cb, gran: coarser }
-    }
-  }
-  // Otherwise grow the unit count about the anchor, clamped to the data bounds.
+  if (g === 'all') return cur
   const boundsR = { start: startOfDay(zb.min.getTime()), end: startOfDay(zb.max.getTime()) }
   const N = unitsInRange(r, g)
   const total = unitsInRange(boundsR, g)
@@ -535,9 +497,12 @@ function zoomOutSnap(
   if (nNew <= N) nNew = N + 1 // guarantee progress
   if (nNew > total) nNew = total
   if (nNew === N) return cur // already spans the whole data at this unit
+  // Index-based anchoring (see zoomInSnap): keep the pointed bucket in its pixel slot.
   const boundsFirst = bucketStart(boundsR.start, g).getTime()
-  const aIdx = anchorIndex(boundsFirst, anchorT, g)
-  const left = clampInt(Math.round(aIdx - anchor * (nNew - 1)), 0, total - nNew)
+  const startIdx = anchorIndex(boundsFirst, r.start.getTime(), g) // window's offset in the bounds grid
+  const aIdx = clampInt(startIdx + Math.floor(anchor * N), 0, total - 1)
+  const slot = clampInt(Math.floor(anchor * nNew), 0, nNew - 1)
+  const left = clampInt(aIdx - slot, 0, total - nNew)
   const ls = nthBucketFrom(boundsFirst, g, left)
   const re = nthBucketFrom(ls, g, nNew - 1)
   const end = bucketToRange(re, g)?.end ?? new Date(re)

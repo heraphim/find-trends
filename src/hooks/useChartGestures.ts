@@ -30,8 +30,13 @@ export function useChartGestures(ref: RefObject<HTMLElement | null>, handlers: H
     const el = ref.current
     if (!el || !enabled) return
 
+    // Cursor position as a fraction across the chart's PLOT AREA (not the wrapper,
+    // which includes the Y-axis and margins) — so the zoom anchor lands on the bucket
+    // actually under the cursor. The x-axis line spans exactly the plot width; fall
+    // back to the wrapper if it isn't mounted yet.
     const fracX = (clientX: number) => {
-      const r = el.getBoundingClientRect()
+      const axis = el.querySelector('.recharts-xAxis .recharts-cartesian-axis-line')
+      const r = (axis ?? el).getBoundingClientRect()
       return r.width > 0 ? clamp01((clientX - r.left) / r.width) : 0.5
     }
 

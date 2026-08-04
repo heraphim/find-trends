@@ -563,7 +563,10 @@ export function MultiTrendChart({
   useChartGestures(wrapRef, {
     onZoom: onGestureZoom,
     onPan: onGesturePan,
-    enabled: (!!onGestureZoom || !!onGesturePan) && data.length > 1,
+    // Stay enabled even at a SINGLE bucket: that's exactly when zoom-in must drill to
+    // the finer unit (a lone year → its months). Gating on data.length > 1 detached
+    // the wheel listener there, so the page scrolled instead of the chart zooming.
+    enabled: !!onGestureZoom || !!onGesturePan,
   })
 
   // Let a drag finish even when released outside the plot: while a drag is active,
