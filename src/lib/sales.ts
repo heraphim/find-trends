@@ -11,6 +11,8 @@ export interface SalesDataset {
   city: string | null // parsed from a "City - …" filename prefix (diacritic-stripped, lowercased)
   uploadedAt: number
   tx: Purchase[] // sorted ascending by date
+  firstSaleT: number // epoch of the earliest sale — computed on upload/merge; backfilled on load
+  lastSaleT: number // epoch of the latest sale — same lifecycle; the pair clamps zooming
   summary: SalesSummary // dataset-intrinsic roll-ups, computed on upload (bump version on shape change)
 }
 
@@ -256,7 +258,16 @@ export async function parseSalesFile(file: File): Promise<SalesDataset> {
   }
   tx.sort((a, b) => a[0] - b[0])
   const { name, city } = parseName(file.name)
-  return { id: makeId(), name, city, uploadedAt: Date.now(), tx, summary: computeSalesSummary(tx) }
+  return {
+    id: makeId(),
+    name,
+    city,
+    uploadedAt: Date.now(),
+    tx,
+    firstSaleT: tx[0][0],
+    lastSaleT: tx[tx.length - 1][0],
+    summary: computeSalesSummary(tx),
+  }
 }
 
 void TITLE_ROW // titles row is skipped; kept as documentation of the layout

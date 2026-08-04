@@ -937,7 +937,11 @@ export function Dashboard() {
       // keep its id (so selections/colors stay valid) and its existing checks.
       const tx = [...existing.tx, ...ds.tx].sort((a, b) => a[0] - b[0])
       setSalesDatasets((prev) =>
-        prev.map((d) => (d.id === existing.id ? { ...d, tx, summary: computeSalesSummary(tx) } : d)),
+        prev.map((d) =>
+          d.id === existing.id
+            ? { ...d, tx, firstSaleT: tx[0][0], lastSaleT: tx[tx.length - 1][0], summary: computeSalesSummary(tx) }
+            : d,
+        ),
       )
     } else {
       // Brand-new dataset (already carries its summary): add it, check Amount only.
@@ -969,13 +973,24 @@ export function Dashboard() {
     })
   }, [])
 
-  // Backfill summaries for datasets persisted before this shipped (or after a
-  // version bump). Runs once per stale set; writes back so it isn't recomputed.
+  // Backfill summaries + first/last-sale dates for datasets persisted before
+  // they shipped (or after a version bump). Runs once per stale set; writes back
+  // so it isn't recomputed.
   useEffect(() => {
-    if (!salesDatasets.some((d) => d.summary?.version !== SALES_SUMMARY_VERSION)) return
+    const stale = (d: SalesDataset) =>
+      d.summary?.version !== SALES_SUMMARY_VERSION || d.firstSaleT == null || d.lastSaleT == null
+    if (!salesDatasets.some(stale)) return
     setSalesDatasets((prev) =>
       prev.map((d) =>
-        d.summary?.version === SALES_SUMMARY_VERSION ? d : { ...d, summary: computeSalesSummary(d.tx) },
+        stale(d)
+          ? {
+              ...d,
+              firstSaleT: d.tx[0]?.[0] ?? d.firstSaleT,
+              lastSaleT: d.tx[d.tx.length - 1]?.[0] ?? d.lastSaleT,
+              summary:
+                d.summary?.version === SALES_SUMMARY_VERSION ? d.summary : computeSalesSummary(d.tx),
+            }
+          : d,
       ),
     )
   }, [salesDatasets, setSalesDatasets])
@@ -1270,7 +1285,10 @@ export function Dashboard() {
     const plottedSales = checkedDatasets.filter(datasetVisible)
     if (plottedSales.length) {
       for (const ds of plottedSales) {
-        if (ds.tx.length) consider(ds.tx[0][0], ds.tx[ds.tx.length - 1][0])
+        // The persisted first/last-sale dates (tx fallback pre-backfill).
+        const first = ds.firstSaleT ?? ds.tx[0]?.[0]
+        const last = ds.lastSaleT ?? ds.tx[ds.tx.length - 1]?.[0]
+        if (first != null && last != null) consider(first, last)
       }
     } else if (series.length) {
       for (const s of series) {
@@ -1293,17 +1311,20 @@ export function Dashboard() {
   // panning can't run past the sales data. Falls back to the day-sheet bounds
   // while nothing is loaded yet.
   const zoomBounds = useMemo(() => {
-    // Zoom/pan roam the WHOLE data landscape (the day-sheet bounds), not the
-    // sales extent — a shop file that ends in June must not stop the user from
-    // zooming out into the months around it (weather/FX/holidays continue). The
-    // sales extent still drives prev/next stepping (stepBounds), where "stop at
-    // the shop's last sale" is the right call. The current window is unioned in
-    // so a gesture never CONTRACTS a view that's already wider than the data.
+    // Clamp rule (the user's call): earliest first-sale → latest last-sale across
+    // the DISPLAYED sales datasets bounds the zoom; with none displayed, the other
+    // shown data bounds it (dataExtent's priority chain, else day-sheet bounds).
+    const base = dataExtent ? { min: new Date(dataExtent.minT), max: new Date(dataExtent.maxT) } : bounds
+    // The current window is unioned in: Range presets aren't clamped, so the
+    // window can legitimately be wider than the base, and a gesture must never
+    // CONTRACT the view back inside it — it just can't grow past whichever is
+    // wider (without this, one zoom-out snapped a preset-wide window's end back
+    // to the last sale, which read as "data past that date is missing").
     return {
-      min: activeRange.start.getTime() < bounds.min.getTime() ? activeRange.start : bounds.min,
-      max: activeRange.end.getTime() > bounds.max.getTime() ? activeRange.end : bounds.max,
+      min: activeRange.start.getTime() < base.min.getTime() ? activeRange.start : base.min,
+      max: activeRange.end.getTime() > base.max.getTime() ? activeRange.end : base.max,
     }
-  }, [bounds, activeRange])
+  }, [dataExtent, bounds, activeRange])
 
   // Zoom in/out buttons about the centre. Zoom-in shrinks until one unit fills
   // the screen, then drills to the next finer unit (zoomInSnap); zoom-out grows
