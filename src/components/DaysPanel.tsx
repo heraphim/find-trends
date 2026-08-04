@@ -27,7 +27,14 @@ function Row({
 }) {
   return (
     <div>
-      <label className="flex w-fit cursor-pointer items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+      <label
+        className={
+          'flex w-fit cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-sm font-medium transition-colors ' +
+          (on
+            ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-500/60 dark:bg-blue-500/10 dark:text-blue-300'
+            : 'border-slate-300 text-slate-500 dark:border-slate-700 dark:text-slate-400')
+        }
+      >
         <input type="checkbox" checked={on} onChange={onToggle} className="h-3.5 w-3.5 accent-blue-600" />
         {label}
       </label>

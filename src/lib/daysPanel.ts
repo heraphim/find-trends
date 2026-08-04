@@ -57,7 +57,9 @@ export function daysPanelAllows(
     if (!dayInCircularRange(d.getDate(), s.day.lo, s.day.hi)) return false
   }
   if (s.holiday.on && !(s.holiday.yes && s.holiday.no)) {
-    const isHoliday = attrs?.['is_holiday'] === 'TRUE'
+    // The days sheet stores Python-style booleans ("True"/"False") — compare
+    // case-insensitively so a generator change to TRUE/true keeps working.
+    const isHoliday = attrs?.['is_holiday']?.toLowerCase() === 'true'
     if (!(isHoliday ? s.holiday.yes : s.holiday.no)) return false
   }
   return true
