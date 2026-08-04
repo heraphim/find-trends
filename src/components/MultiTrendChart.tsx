@@ -273,24 +273,27 @@ function EventBands({
 // Persistent highlight for the selected bucket — the same full-unit band the
 // hover cursor paints, but pinned (dashed outline) so a clicked day/week/month
 // stays marked on the chart. Hosted in a <Customized> so the layout hooks
-// resolve; centered on the unit via the category scale, width = one bucket.
+// resolve; spans the unit's real cell (boundary to boundary, same geometry as
+// UnitBoundaries/EventBands) so it lines up with the drawn delimiters on both
+// point and band scales.
 function SelectedBand({
   label,
-  bucketCount,
+  labels,
   fill,
 }: {
   label: string
-  bucketCount: number
+  labels: string[]
   fill: string
 }) {
   const plot = usePlotArea()
   const scale = useXAxisScale()
-  if (!plot || typeof scale !== 'function' || bucketCount <= 0) return null
-  const cx = scale(label, { position: 'middle' })
-  if (typeof cx !== 'number') return null
-  const band = plot.width / bucketCount
-  const x1 = Math.max(plot.x, cx - band / 2)
-  const x2 = Math.min(plot.x + plot.width, cx + band / 2)
+  if (!plot || typeof scale !== 'function' || labels.length === 0) return null
+  const i = labels.indexOf(label)
+  if (i < 0) return null
+  const edges = boundariesFromCenters(bucketCenters(labels, scale), plot.x, plot.x + plot.width)
+  const x1 = edges[i]
+  const x2 = edges[i + 1]
+  if (typeof x1 !== 'number' || typeof x2 !== 'number') return null
   const w = x2 - x1
   if (w <= 0) return null
   return (
@@ -316,20 +319,24 @@ function SelectedBand({
 // thin mid-line. This custom cursor paints the whole hovered time-unit band
 // instead. Recharts clones the element with `points` (the line's top/bottom
 // endpoints, centered on the hovered unit) plus the plot-rect offset spread
-// flat as top-level `left`/`width` props; we widen that into a band
-// `plotWidth / bucketCount` across, clamped so edge units don't spill past the
-// axis.
+// flat as top-level `left`/`width` props; we widen that into the unit's cell,
+// clamped so edge units don't spill past the axis. The cell width depends on
+// the x-scale: a band scale (sales bars present) tiles the plot into
+// `bucketCount` bands, but a point scale (lines only) spreads the centers
+// across the width in `bucketCount - 1` steps — using the wrong one leaves the
+// rect misaligned with the unit delimiters, straddling two units.
 function BandCursor(props: {
   bucketCount: number
+  pointScale: boolean // true when no bars are plotted (category axis → point scale)
   fill: string
   fillOpacity: number
   points?: { x: number; y: number }[]
   left?: number
   width?: number
 }) {
-  const { bucketCount, fill, fillOpacity, points, left, width } = props
+  const { bucketCount, pointScale, fill, fillOpacity, points, left, width } = props
   if (!points || points.length < 2 || left == null || width == null || bucketCount <= 0) return null
-  const band = width / bucketCount
+  const band = pointScale && bucketCount > 1 ? width / (bucketCount - 1) : width / bucketCount
   const x1 = Math.max(left, points[0].x - band / 2)
   const x2 = Math.min(left + width, points[0].x + band / 2)
   const w = x2 - x1
@@ -569,6 +576,54 @@ export function MultiTrendChart({
     enabled: !!onGestureZoom || !!onGesturePan,
   })
 
+  // Recharts stores the hovered bucket (tooltip index, band cursor, active dots)
+  // in its own store and recomputes it ONLY when a mouse event reaches its
+  // wrapper — so when a wheel-zoom/pan/drill swaps `data` under a stationary
+  // pointer, the stale index/coords describe a different unit on the new axis
+  // until the mouse physically moves a pixel. Track the pointer while it's over
+  // the chart and replay a mousemove at its last position after each data
+  // change (next frame, so Recharts has laid out the new axis first).
+  const pointerRef = useRef<{ x: number; y: number } | null>(null)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const track = (e: MouseEvent) => {
+      pointerRef.current = { x: e.clientX, y: e.clientY }
+    }
+    const clear = () => {
+      pointerRef.current = null
+    }
+    el.addEventListener('mousemove', track)
+    el.addEventListener('wheel', track) // wheel carries coords too — zooming without moving still tracks
+    el.addEventListener('mouseleave', clear)
+    return () => {
+      el.removeEventListener('mousemove', track)
+      el.removeEventListener('wheel', track)
+      el.removeEventListener('mouseleave', clear)
+    }
+  }, [])
+  useEffect(() => {
+    if (!pointerRef.current) return
+    const raf = requestAnimationFrame(() => {
+      const p = pointerRef.current
+      const el = wrapRef.current
+      if (!p || !el) return
+      // Must dispatch on the recharts wrapper (or a descendant) so the event
+      // bubbles through the div carrying Recharts' onMouseMove handler.
+      const surface = el.querySelector('.recharts-wrapper')
+      surface?.dispatchEvent(
+        new MouseEvent('mousemove', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: p.x,
+          clientY: p.y,
+        }),
+      )
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [data])
+
   // Let a drag finish even when released outside the plot: while a drag is active,
   // a window-level mouseup commits it. Because onMouseMove stops firing once the
   // pointer leaves the chart, endIdx stays pinned to the last in-bounds time unit
@@ -651,7 +706,7 @@ export function MultiTrendChart({
           {selectedLabel && (
             <Customized
               component={() => (
-                <SelectedBand label={selectedLabel} bucketCount={data.length} fill={colors.axis} />
+                <SelectedBand label={selectedLabel} labels={data.map((d) => d.label)} fill={colors.axis} />
               )}
             />
           )}
@@ -696,7 +751,14 @@ export function MultiTrendChart({
           {/* A ComposedChart's built-in cursor is a vertical line; BandCursor
               paints the whole hovered time-unit band instead (not just a line). */}
           <Tooltip
-            cursor={<BandCursor bucketCount={data.length} fill={colors.axis} fillOpacity={0.12} />}
+            cursor={
+              <BandCursor
+                bucketCount={data.length}
+                pointScale={barIds.length === 0}
+                fill={colors.axis}
+                fillOpacity={0.12}
+              />
+            }
             content={
               <ChartTooltip
                 series={allSeries}
