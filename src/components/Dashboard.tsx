@@ -51,6 +51,7 @@ import {
 } from '../lib/sales'
 import { CityControls } from './CityControls'
 import { type SheetState, type SidebarCategory } from './Sidebar'
+import { SidebarDrawer } from './SidebarDrawer'
 import { CategoryBar } from './CategoryBar'
 import { DayFilters } from './DayFilters'
 import { SalesPanel } from './SalesPanel'
@@ -562,6 +563,9 @@ export function Dashboard() {
   const [hoveredMarker, setHoveredMarker] = useState<string | null>(null)
   // Collapse the whole Trends chart section (controls + chart).
   const [chartCollapsed, toggleChart] = useCollapsed('trends')
+  // The controls drawer (categories + day filters + sales). Ephemeral — opens
+  // via the floating button (mobile) or the left-edge hover (desktop).
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const inFlight = useRef<Set<string>>(new Set())
   const eventInFlight = useRef<Set<string>>(new Set())
@@ -1679,42 +1683,45 @@ export function Dashboard() {
         )}
       </section>
 
-      {/* Controls + panels, centered beneath the full-width chart */}
+      {/* Controls drawer — categories, day filters, sales. Floating ☰ opens it
+          on mobile; hovering the left edge opens it on bigger screens. */}
+      <SidebarDrawer open={drawerOpen} onOpen={() => setDrawerOpen(true)} onClose={() => setDrawerOpen(false)}>
+        <CategoryBar
+          categories={categories}
+          isSelected={isColSelected}
+          selectedCount={selectedCount}
+          onToggleColumn={toggleColumn}
+          onOpenCategory={onOpenCategory}
+          eventSources={eventSources}
+          onToggleEventSource={toggleEventSource}
+        />
+
+        {dayAttributes && (
+          <DayFilters
+            dimensions={dayAttributes.dimensions}
+            state={filterState}
+            onToggle={toggleFilterValue}
+          />
+        )}
+
+        <SalesPanel
+          datasets={salesDatasets}
+          selections={salesSelections}
+          includedCities={includedCities}
+          onUpload={handleUploadSales}
+          onToggle={toggleSalesMetric}
+          onRemove={removeSalesDataset}
+        />
+      </SidebarDrawer>
+
+      {/* Panels, centered beneath the full-width chart */}
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-      {/* Cities → categories bar → day filters */}
       <CityControls
         cities={discovery.model.cities}
         included={includedCities}
         overlap={overlap}
         onToggleCity={toggleCity}
         onToggleOverlap={() => setOverlap((o) => !o)}
-      />
-
-      <CategoryBar
-        categories={categories}
-        isSelected={isColSelected}
-        selectedCount={selectedCount}
-        onToggleColumn={toggleColumn}
-        onOpenCategory={onOpenCategory}
-        eventSources={eventSources}
-        onToggleEventSource={toggleEventSource}
-      />
-
-      {dayAttributes && (
-        <DayFilters
-          dimensions={dayAttributes.dimensions}
-          state={filterState}
-          onToggle={toggleFilterValue}
-        />
-      )}
-
-      <SalesPanel
-        datasets={salesDatasets}
-        selections={salesSelections}
-        includedCities={includedCities}
-        onUpload={handleUploadSales}
-        onToggle={toggleSalesMetric}
-        onRemove={removeSalesDataset}
       />
 
       <SalesSummaryPanel datasets={checkedDatasets.filter((d) => d.summary)} onJumpToDay={jumpToDay} />
