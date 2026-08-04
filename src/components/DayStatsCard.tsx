@@ -95,9 +95,10 @@ function CityIcons({ col }: { col: CityDayStats }) {
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+// mirror → value on the left, label on the right (the two-city facing layout).
+function Row({ label, value, mirror }: { label: string; value: string; mirror?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 py-0.5">
+    <div className={'flex items-baseline justify-between gap-3 py-0.5' + (mirror ? ' flex-row-reverse' : '')}>
       <span className="text-[11px] uppercase tracking-wide text-slate-400">{label}</span>
       <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">{value}</span>
     </div>
@@ -179,29 +180,38 @@ export function DayStatsCard({ title, columns, onClear, onPrev, onNext, canPrev,
         <p className="text-sm text-slate-400">Nothing to show for this period.</p>
       ) : (
         <div className="flex flex-wrap gap-3">
-          {columns.map((col) => (
+          {columns.map((col, i) => {
+            // With exactly two cities the pair reads as a mirror around the gap:
+            // the FIRST card's title is right-aligned with icons before the name,
+            // and the SECOND card's rows flip (values left, labels right) — so the
+            // figures of both cities meet in the middle for at-a-glance comparison.
+            const pair = columns.length === 2
+            const mirrorTitle = pair && i === 0
+            const mirrorRows = pair && i === 1
+            return (
             <div
               key={col.city}
               className="min-w-[200px] flex-1 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50"
             >
-              <div className="mb-2 flex items-center gap-2">
+              <div className={'mb-2 flex items-center gap-2' + (mirrorTitle ? ' flex-row-reverse' : '')}>
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{col.city}</span>
                 <CityIcons col={col} />
               </div>
 
               {col.stats ? (
                 <div className="flex flex-col text-sm">
-                  <Row label="Total money" value={money(col.stats.total)} />
-                  <Row label="Purchases" value={col.stats.count.toLocaleString()} />
-                  <Row label="Average purchase" value={money(col.stats.average)} />
-                  <Row label="Lowest 3" value={list(col.stats.low)} />
-                  <Row label="Highest 3" value={list(col.stats.high)} />
+                  <Row mirror={mirrorRows} label="Total money" value={money(col.stats.total)} />
+                  <Row mirror={mirrorRows} label="Purchases" value={col.stats.count.toLocaleString()} />
+                  <Row mirror={mirrorRows} label="Average purchase" value={money(col.stats.average)} />
+                  <Row mirror={mirrorRows} label="Lowest 3" value={list(col.stats.low)} />
+                  <Row mirror={mirrorRows} label="Highest 3" value={list(col.stats.high)} />
                 </div>
               ) : (
-                <p className="text-xs text-slate-400">No sales this period.</p>
+                <p className={'text-xs text-slate-400' + (mirrorRows ? ' text-right' : '')}>No sales this period.</p>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </section>

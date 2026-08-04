@@ -39,7 +39,7 @@ interface Props {
 }
 
 const controlClass =
-  'rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 [color-scheme:light] dark:[color-scheme:dark]'
+  'rounded-lg border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 [color-scheme:light] dark:[color-scheme:dark]'
 
 // The picker no longer *owns* the range — it's a preset input. Each mode button
 // or sub-selection computes a range and hands it to onChange (which commits it to
@@ -107,7 +107,7 @@ export function DateRangePicker({ onChange, bounds, mode, onModeChange }: Props)
               onClick={() => selectMode(m.id)}
               aria-pressed={active}
               className={
-                'rounded-md px-3 py-1 text-sm font-medium transition-colors ' +
+                'rounded px-2 py-0.5 text-xs font-medium transition-colors ' +
                 (active
                   ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
                   : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100')

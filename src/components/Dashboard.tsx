@@ -1518,7 +1518,7 @@ export function Dashboard() {
     <div className="flex flex-col gap-4">
       {/* Chart area — full width (spans the page), moved above the controls */}
       <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:p-5 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <h2 className="flex items-center gap-2 text-lg font-semibold">
             <CollapseChevron collapsed={chartCollapsed} onClick={toggleChart} label="trends chart" />
             Trends
@@ -1529,6 +1529,16 @@ export function Dashboard() {
               </span>
             )}
           </h2>
+          {/* City selectors — on the title line, centered in the remaining width */}
+          <div className="flex min-w-0 flex-1 justify-center">
+            <CityControls
+              cities={discovery.model.cities}
+              included={includedCities}
+              overlap={overlap}
+              onToggleCity={toggleCity}
+              onToggleOverlap={() => setOverlap((o) => !o)}
+            />
+          </div>
           {!chartCollapsed && timeHistory.length > 1 && (
             <button
               type="button"
@@ -1621,30 +1631,26 @@ export function Dashboard() {
                     highlightIds={hoveredCorr && hoveredCorr.group === g.key ? hoveredCorr.ids : null}
                   />
                   <MarkerLegend markers={markers} onHover={setHoveredMarker} hoveredKey={hoveredMarker} />
-                  {/* All moderate-or-stronger relations, most-positive first.
-                      Hovering a row glows its two series on the chart. */}
+                  {/* All moderate-or-stronger relations, most-positive first, as a
+                      wrapping row of pills. Hovering one glows its two series. */}
                   {shownCorrs.length > 0 ? (
-                    <div
-                      className={`mt-2 grid grid-cols-1 gap-x-6 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400 ${
-                        shownCorrs.length > 6 ? 'md:grid-cols-2' : ''
-                      }`}
-                    >
+                    <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                       {shownCorrs.map((c, i) => (
-                        <div
+                        <span
                           key={i}
-                          className="-mx-1 cursor-default rounded px-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          className="inline-flex cursor-default items-baseline gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600 dark:hover:bg-slate-800"
                           onMouseEnter={() => setHoveredCorr({ group: g.key, ids: [c.aId, c.bId] })}
                           onMouseLeave={() => setHoveredCorr(null)}
                         >
                           <span className="text-slate-600 dark:text-slate-300">
                             {c.a} ↔ {c.b}
                           </span>
-                          : r ={' '}
                           <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-200">
                             {c.r.toFixed(2)}
-                          </span>{' '}
-                          · {corrLabel(c.r)} <span className="opacity-60">(n={c.n})</span>
-                        </div>
+                          </span>
+                          <span>{corrLabel(c.r)}</span>
+                          <span className="opacity-60">n={c.n}</span>
+                        </span>
                       ))}
                     </div>
                   ) : (
@@ -1659,20 +1665,23 @@ export function Dashboard() {
               })}
             </div>
           )}
-          {/* Time + scale controls — under the graph */}
+          {/* Time + scale controls — under the graph. Range + Time units share a
+              line on big screens and stack on mobile. */}
           <div className="flex flex-col gap-3">
-            <DateRangePicker
-              onChange={setRangeFromPicker}
-              bounds={bounds}
-              mode={rangeMode}
-              onModeChange={setRangeMode}
-            />
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div className="flex flex-col items-start gap-3 md:flex-row md:flex-wrap md:items-center md:gap-x-6">
+              <DateRangePicker
+                onChange={setRangeFromPicker}
+                bounds={bounds}
+                mode={rangeMode}
+                onModeChange={setRangeMode}
+              />
               <GranularityToggle
                 value={granularity}
                 onChange={changeGranularity}
                 maxLevel={maxLevel}
               />
+            </div>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Zoom</span>
                 <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
@@ -1785,18 +1794,8 @@ export function Dashboard() {
 
       {/* Panels, centered beneath the full-width chart */}
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-      <CityControls
-        cities={discovery.model.cities}
-        included={includedCities}
-        overlap={overlap}
-        onToggleCity={toggleCity}
-        onToggleOverlap={() => setOverlap((o) => !o)}
-      />
-
-      <SalesSummaryPanel datasets={checkedDatasets.filter((d) => d.summary)} onJumpToDay={jumpToDay} />
-
-      {/* Selected-period stats — per-city weather + sales for the clicked point,
-          or the whole active range when nothing is clicked (never empty). */}
+      {/* Selected-period stats — first under the graph; per-city weather + sales
+          for the clicked point, or the whole active range when nothing is clicked. */}
       {dayCityColumns.length > 0 && (
         <DayStatsCard
           title={periodLabel(focusedRange)}
@@ -1808,6 +1807,8 @@ export function Dashboard() {
           canNext={canNext}
         />
       )}
+
+      <SalesSummaryPanel datasets={checkedDatasets.filter((d) => d.summary)} onJumpToDay={jumpToDay} />
 
       {/* Curated (local/regional) events — our data, above the Wikipedia panel */}
       <CuratedEventsPanel

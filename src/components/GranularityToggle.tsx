@@ -33,7 +33,7 @@ export function GranularityToggle({ value, onChange, maxLevel }: Props) {
               onClick={() => onChange(g)}
               aria-pressed={active}
               className={
-                'rounded-md px-3 py-1 text-sm font-medium transition-colors ' +
+                'rounded px-2 py-0.5 text-xs font-medium transition-colors ' +
                 (disabled
                   ? 'cursor-not-allowed text-slate-300 dark:text-slate-600'
                   : active
