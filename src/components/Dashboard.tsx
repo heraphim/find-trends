@@ -1293,17 +1293,17 @@ export function Dashboard() {
   // panning can't run past the sales data. Falls back to the day-sheet bounds
   // while nothing is loaded yet.
   const zoomBounds = useMemo(() => {
-    const base = dataExtent ? { min: new Date(dataExtent.minT), max: new Date(dataExtent.maxT) } : bounds
-    // Range presets aren't clamped, so the window can legitimately be wider than
-    // the data extent. Union the current window in: a zoom/pan gesture must never
-    // CONTRACT the view back to the data (it snapped a preset-wide window's end
-    // to the last sale, which read as "data past that date is missing") — it just
-    // can't grow past whichever is wider.
+    // Zoom/pan roam the WHOLE data landscape (the day-sheet bounds), not the
+    // sales extent — a shop file that ends in June must not stop the user from
+    // zooming out into the months around it (weather/FX/holidays continue). The
+    // sales extent still drives prev/next stepping (stepBounds), where "stop at
+    // the shop's last sale" is the right call. The current window is unioned in
+    // so a gesture never CONTRACTS a view that's already wider than the data.
     return {
-      min: activeRange.start.getTime() < base.min.getTime() ? activeRange.start : base.min,
-      max: activeRange.end.getTime() > base.max.getTime() ? activeRange.end : base.max,
+      min: activeRange.start.getTime() < bounds.min.getTime() ? activeRange.start : bounds.min,
+      max: activeRange.end.getTime() > bounds.max.getTime() ? activeRange.end : bounds.max,
     }
-  }, [dataExtent, bounds, activeRange])
+  }, [bounds, activeRange])
 
   // Zoom in/out buttons about the centre. Zoom-in shrinks until one unit fills
   // the screen, then drills to the next finer unit (zoomInSnap); zoom-out grows
