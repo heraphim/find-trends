@@ -22,8 +22,10 @@ import type { Tier } from '../lib/events'
 
 export interface EventMarker {
   key: string // stable identity (span + color) — shared with the marker legend for hover glow
-  startLabel: string // bucket label of the event's start (must match an x-axis label)
-  endLabel: string // bucket label of the event's end; === startLabel for single-bucket events
+  startT: number // bucket time of the event's start (must match an x-axis bucket t)
+  endT: number // bucket time of the event's end; === startT for single-bucket events
+  startLabel: string // display label of the start bucket (marker legend text only)
+  endLabel: string // display label of the end bucket
   tier: Tier
   names: string[]
   color?: string // city series color for local events (tinted band); tier color otherwise
@@ -75,13 +77,16 @@ interface Props {
 // shown, has a real bandwidth). Midpoints-between-centers give true boundaries
 // for both. The two outer edges are extrapolated (half a step past the first/
 // last center) and clamped to the plot rect.
+// Keyed by bucket `t` (the axis dataKey) — NOT the display label: year-less
+// labels repeat across a filtered multi-year window ("Jun 1" 2020 vs 2026), and
+// an ordinal scale maps duplicate keys to the FIRST occurrence's position.
 function bucketCenters(
-  labels: string[],
+  ts: number[],
   scale: NonNullable<ReturnType<typeof useXAxisScale>>,
 ): number[] {
   const centers: number[] = []
-  for (const l of labels) {
-    const c = scale(l, { position: 'middle' })
+  for (const t of ts) {
+    const c = scale(t, { position: 'middle' })
     if (typeof c === 'number') centers.push(c)
   }
   return centers
@@ -105,20 +110,20 @@ function boundariesFromCenters(centers: number[], left: number, right: number): 
 // resolve.
 const NOTCH = 6 // px
 function UnitBoundaries({
-  labels,
+  ts,
   full,
   gridColor,
   tickColor,
 }: {
-  labels: string[]
+  ts: number[]
   full: boolean
   gridColor: string
   tickColor: string
 }) {
   const plot = usePlotArea()
   const scale = useXAxisScale()
-  if (!plot || typeof scale !== 'function' || labels.length === 0) return null
-  const edges = boundariesFromCenters(bucketCenters(labels, scale), plot.x, plot.x + plot.width)
+  if (!plot || typeof scale !== 'function' || ts.length === 0) return null
+  const edges = boundariesFromCenters(bucketCenters(ts, scale), plot.x, plot.x + plot.width)
   if (edges.length === 0) return null
   const top = plot.y
   const h = plot.height
@@ -159,27 +164,27 @@ function UnitBoundaries({
 // matching band (hoveredKey) and dims the rest.
 function EventBands({
   markers,
-  labels,
+  ts,
   hoveredKey,
   hatchInk,
 }: {
   markers: EventMarker[]
-  labels: string[]
+  ts: number[]
   hoveredKey?: string | null
   hatchInk: string // stroke for the overlap hatch patterns
 }) {
   const uid = useId()
   const plot = usePlotArea()
   const scale = useXAxisScale()
-  if (!plot || typeof scale !== 'function' || markers.length === 0 || labels.length === 0) return null
-  const edges = boundariesFromCenters(bucketCenters(labels, scale), plot.x, plot.x + plot.width)
+  if (!plot || typeof scale !== 'function' || markers.length === 0 || ts.length === 0) return null
+  const edges = boundariesFromCenters(bucketCenters(ts, scale), plot.x, plot.x + plot.width)
   if (edges.length === 0) return null
-  const idxByLabel = new Map(labels.map((l, i) => [l, i]))
+  const idxByT = new Map(ts.map((t, i) => [t, i]))
 
   // Resolve each marker to its pixel band first, so overlaps can be computed.
   const bands = markers.flatMap((m) => {
-    const a = idxByLabel.get(m.startLabel)
-    const b = idxByLabel.get(m.endLabel)
+    const a = idxByT.get(m.startT)
+    const b = idxByT.get(m.endT)
     if (a == null || b == null) return []
     const lo = Math.min(a, b)
     const hi = Math.max(a, b)
@@ -278,20 +283,20 @@ function EventBands({
 // UnitBoundaries/EventBands) so it lines up with the drawn delimiters on both
 // point and band scales.
 function SelectedBand({
-  label,
-  labels,
+  t,
+  ts,
   fill,
 }: {
-  label: string
-  labels: string[]
+  t: number
+  ts: number[]
   fill: string
 }) {
   const plot = usePlotArea()
   const scale = useXAxisScale()
-  if (!plot || typeof scale !== 'function' || labels.length === 0) return null
-  const i = labels.indexOf(label)
+  if (!plot || typeof scale !== 'function' || ts.length === 0) return null
+  const i = ts.indexOf(t)
   if (i < 0) return null
-  const edges = boundariesFromCenters(bucketCenters(labels, scale), plot.x, plot.x + plot.width)
+  const edges = boundariesFromCenters(bucketCenters(ts, scale), plot.x, plot.x + plot.width)
   const x1 = edges[i]
   const x2 = edges[i + 1]
   if (typeof x1 !== 'number' || typeof x2 !== 'number') return null
@@ -389,8 +394,11 @@ function activeIndexOf(state: unknown, data: ChartRow[]): number | null {
   }
   const i = Number(s?.activeTooltipIndex ?? s?.activeIndex)
   if (Number.isInteger(i) && i >= 0 && i < data.length) return i
+  // activeLabel is the axis dataKey value — the bucket `t` (unique), not the
+  // display label (which repeats across years and would match the wrong bucket).
   if (s?.activeLabel != null) {
-    const j = data.findIndex((r) => r.label === s.activeLabel)
+    const t = Number(s.activeLabel)
+    const j = data.findIndex((r) => r.t === t)
     if (j >= 0) return j
   }
   return null
@@ -501,9 +509,11 @@ export function MultiTrendChart({
 }: Props) {
   const { theme } = useTheme()
   const colors = chartColors(theme)
-  // Label of the selected bucket → a persistent highlight band on that unit.
-  const selectedLabel =
-    selectedT != null ? (data.find((d) => d.t === selectedT)?.label ?? null) : null
+  // The selected bucket (if it's on this axis) → a persistent highlight band.
+  const selectedOnAxis = selectedT != null && data.some((d) => d.t === selectedT) ? selectedT : null
+  // Axis ticks are keyed by the unique bucket `t`; this maps them back to the
+  // year-less display label.
+  const labelByT = new Map(data.map((d) => [d.t, d.label]))
   const bars = barSeries ?? []
   const allSeries = [...series, ...bars]
   const lineIds = new Set(series.map((s) => s.id))
@@ -713,24 +723,24 @@ export function MultiTrendChart({
           <Customized
             component={() => (
               <UnitBoundaries
-                labels={data.map((d) => d.label)}
+                ts={data.map((d) => d.t)}
                 full={data.length <= 60}
                 gridColor={colors.grid}
                 tickColor={colors.axis}
               />
             )}
           />
-          {selectedLabel && (
+          {selectedOnAxis != null && (
             <Customized
               component={() => (
-                <SelectedBand label={selectedLabel} labels={data.map((d) => d.label)} fill={colors.axis} />
+                <SelectedBand t={selectedOnAxis} ts={data.map((d) => d.t)} fill={colors.axis} />
               )}
             />
           )}
           {dragging && drag && (
             <ReferenceArea
-              x1={data[Math.min(drag.startIdx, drag.endIdx)].label}
-              x2={data[Math.max(drag.startIdx, drag.endIdx)].label}
+              x1={data[Math.min(drag.startIdx, drag.endIdx)].t}
+              x2={data[Math.max(drag.startIdx, drag.endIdx)].t}
               fill={colors.axis}
               fillOpacity={0.18}
               strokeOpacity={0}
@@ -741,7 +751,13 @@ export function MultiTrendChart({
             />
           )}
           <XAxis
-            dataKey="label"
+            // Keyed by the unique bucket `t` — NOT the year-less display label:
+            // labels repeat across a filtered multi-year window ("Jun 1" 2020 vs
+            // 2026), and Recharts resolves duplicate categories to the FIRST
+            // occurrence (hover/active-dot/markers all landed on the wrong year).
+            dataKey="t"
+            type="category"
+            tickFormatter={(t) => labelByT.get(Number(t)) ?? ''}
             tick={{ fill: colors.axis, fontSize: 12 }}
             tickMargin={8}
             minTickGap={44}
@@ -857,7 +873,7 @@ export function MultiTrendChart({
               component={() => (
                 <EventBands
                   markers={eventMarkers}
-                  labels={data.map((d) => d.label)}
+                  ts={data.map((d) => d.t)}
                   hoveredKey={hoveredMarkerKey}
                   hatchInk={colors.axis}
                 />
