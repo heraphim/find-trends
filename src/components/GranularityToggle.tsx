@@ -17,11 +17,27 @@ interface Props {
   maxLevel: number // highest selectable level (aligns with the range mode)
 }
 
+const selectClass =
+  'rounded-lg border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 [color-scheme:light] dark:[color-scheme:dark]'
+
 export function GranularityToggle({ value, onChange, maxLevel }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Time units</span>
-      <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
+      {/* Compact select on mobile, buttons on md+ */}
+      <select
+        aria-label="Time units"
+        className={selectClass + ' md:hidden'}
+        value={value}
+        onChange={(e) => onChange(e.target.value as Granularity)}
+      >
+        {GRANULARITY_ORDER.map((g, level) => (
+          <option key={g} value={g} disabled={level > maxLevel}>
+            {LABELS[g]}
+          </option>
+        ))}
+      </select>
+      <div className="hidden rounded-lg border border-slate-300 bg-slate-100 p-0.5 md:inline-flex dark:border-slate-700 dark:bg-slate-800">
         {GRANULARITY_ORDER.map((g, level) => {
           const active = g === value
           const disabled = level > maxLevel

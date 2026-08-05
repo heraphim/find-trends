@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { applyToken, collectConfig, extractToken, shareLink } from '../lib/shareConfig'
 import { useTheme } from '../hooks/useTheme'
 import { formatRelative } from '../lib/relativeTime'
 
 // Floating pill anchored to the bottom-right corner. Left to right:
+//  • Time controls — the Range / Time units / Zoom / Scale / Values row,
+//             passed in from Dashboard via `controls` (horizontal, wraps).
 //  • Share  — mobile: opens the native share sheet with the config URL;
 //             desktop: copies the URL (…?s=<config>) to the clipboard.
 //  • Theme  — light/dark toggle.
@@ -51,7 +53,7 @@ function TimeBlock({ label, iso }: { label: string; iso: string }) {
 
 type Status = { text: string; tone: 'ok' | 'err' } | null
 
-export function FloatingMenu() {
+export function FloatingMenu({ controls }: { controls?: ReactNode }) {
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<Status>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -112,7 +114,7 @@ export function FloatingMenu() {
     'hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100'
 
   return (
-    <div className="fixed bottom-4 right-4 z-40">
+    <div className="fixed bottom-4 right-4 z-40 max-w-[calc(100vw-2rem)]">
       {status && (
         <div className="absolute bottom-full right-0 mb-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 shadow-lg backdrop-blur-sm dark:border-slate-700 dark:bg-slate-800/90">
           <span
@@ -129,7 +131,18 @@ export function FloatingMenu() {
         </div>
       )}
 
-      <div className="flex items-center gap-0.5 rounded-full border border-slate-200 bg-white/80 py-1 pl-1.5 pr-1 shadow-lg backdrop-blur-sm dark:border-slate-700 dark:bg-slate-800/80">
+      <div
+        className={
+          'flex flex-wrap items-center justify-end gap-0.5 border border-slate-200 bg-white/80 py-1 pl-1.5 pr-1 shadow-lg backdrop-blur-sm dark:border-slate-700 dark:bg-slate-800/80 ' +
+          (controls ? 'rounded-2xl' : 'rounded-full')
+        }
+      >
+        {controls && (
+          <>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-2 py-1">{controls}</div>
+            <div className="mx-1 hidden h-6 w-px shrink-0 bg-slate-200 md:block dark:bg-slate-700" />
+          </>
+        )}
         <button
           type="button"
           onClick={onShare}

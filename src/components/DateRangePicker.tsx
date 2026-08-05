@@ -96,8 +96,20 @@ export function DateRangePicker({ onChange, bounds, mode, onModeChange }: Props)
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Range</span>
-      {/* Mode buttons */}
-      <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
+      {/* Mode picker — a compact select on mobile, buttons on md+ */}
+      <select
+        aria-label="Range preset"
+        className={controlClass + ' md:hidden'}
+        value={mode}
+        onChange={(e) => selectMode(e.target.value as RangeMode)}
+      >
+        {MODES.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+      <div className="hidden rounded-lg border border-slate-300 bg-slate-100 p-0.5 md:inline-flex dark:border-slate-700 dark:bg-slate-800">
         {MODES.map((m) => {
           const active = m.id === mode
           return (

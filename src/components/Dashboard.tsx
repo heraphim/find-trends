@@ -66,6 +66,7 @@ import { DateRangePicker, type RangeMode } from './DateRangePicker'
 import { MultiTrendChart, type BucketEvent, type EventMarker } from './MultiTrendChart'
 import { CuratedEventsPanel } from './CuratedEventsPanel'
 import { EventsPanel } from './EventsPanel'
+import { FloatingMenu } from './FloatingMenu'
 
 type SalesAgg = 'total' | 'average'
 
@@ -1501,14 +1502,24 @@ export function Dashboard() {
     ;(window as unknown as Record<string, unknown>).__ft_chartGroups = chartGroups
   }
 
+  // The floating menu lives here (not App) so it can host the time controls;
+  // the early returns still render it bare so share/theme stay available.
   if (discovery.status === 'loading') {
-    return <div className="py-20 text-center text-slate-400">Loading workbook…</div>
+    return (
+      <>
+        <div className="py-20 text-center text-slate-400">Loading workbook…</div>
+        <FloatingMenu />
+      </>
+    )
   }
   if (discovery.status === 'error') {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-        {discovery.message}
-      </div>
+      <>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+          {discovery.message}
+        </div>
+        <FloatingMenu />
+      </>
     )
   }
 
@@ -1665,9 +1676,48 @@ export function Dashboard() {
               })}
             </div>
           )}
-          {/* Time + scale controls — under the graph. All groups share one
-              wrapping line on big screens and stack on mobile. */}
-          <div className="flex flex-col items-start gap-3 md:flex-row md:flex-wrap md:items-center md:gap-x-6 md:gap-y-2">
+        </>
+        )}
+      </section>
+
+      {/* Controls drawer — categories, day filters, sales. Floating ☰ opens it
+          on mobile; hovering the left edge opens it on bigger screens. */}
+      <SidebarDrawer open={drawerOpen} onOpen={() => setDrawerOpen(true)} onClose={() => setDrawerOpen(false)}>
+        <DaysPanel state={daysPanel} onChange={setDaysPanel} />
+
+        <CategoryBar
+          categories={categories}
+          isSelected={isColSelected}
+          selectedCount={selectedCount}
+          onToggleColumn={toggleColumn}
+          onOpenCategory={onOpenCategory}
+          eventSources={eventSources}
+          onToggleEventSource={toggleEventSource}
+        />
+
+        {dayAttributes && (
+          <DayFilters
+            dimensions={dayAttributes.dimensions}
+            state={filterState}
+            onToggle={toggleFilterValue}
+          />
+        )}
+
+        <SalesPanel
+          datasets={salesDatasets}
+          selections={salesSelections}
+          includedCities={includedCities}
+          onUpload={handleUploadSales}
+          onToggle={toggleSalesMetric}
+          onRemove={removeSalesDataset}
+        />
+      </SidebarDrawer>
+
+      {/* Time + scale controls — live in the floating bottom-right menu,
+          horizontal (wrapping) next to the share/theme items. */}
+      <FloatingMenu
+        controls={
+          <>
             <DateRangePicker
               onChange={setRangeFromPicker}
               bounds={bounds}
@@ -1750,43 +1800,9 @@ export function Dashboard() {
                   ))}
                 </div>
               </div>
-          </div>
-        </>
-        )}
-      </section>
-
-      {/* Controls drawer — categories, day filters, sales. Floating ☰ opens it
-          on mobile; hovering the left edge opens it on bigger screens. */}
-      <SidebarDrawer open={drawerOpen} onOpen={() => setDrawerOpen(true)} onClose={() => setDrawerOpen(false)}>
-        <DaysPanel state={daysPanel} onChange={setDaysPanel} />
-
-        <CategoryBar
-          categories={categories}
-          isSelected={isColSelected}
-          selectedCount={selectedCount}
-          onToggleColumn={toggleColumn}
-          onOpenCategory={onOpenCategory}
-          eventSources={eventSources}
-          onToggleEventSource={toggleEventSource}
-        />
-
-        {dayAttributes && (
-          <DayFilters
-            dimensions={dayAttributes.dimensions}
-            state={filterState}
-            onToggle={toggleFilterValue}
-          />
-        )}
-
-        <SalesPanel
-          datasets={salesDatasets}
-          selections={salesSelections}
-          includedCities={includedCities}
-          onUpload={handleUploadSales}
-          onToggle={toggleSalesMetric}
-          onRemove={removeSalesDataset}
-        />
-      </SidebarDrawer>
+          </>
+        }
+      />
 
       {/* Panels, centered beneath the full-width chart */}
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
