@@ -1563,16 +1563,6 @@ export function Dashboard() {
 
         {!chartCollapsed && (
         <>
-          {totalMatchingDays !== null && (
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              <span className="font-semibold text-slate-700 dark:text-slate-200">
-                {totalMatchingDays.toLocaleString()}
-              </span>{' '}
-              day{totalMatchingDays === 1 ? '' : 's'} match the current range &amp; filters
-              {granularity !== 'all' && ' (hover a point for its day count)'}
-            </p>
-          )}
-
           {/* Selected chips — color picker + label + remove */}
           {series.length > 0 && (
             <div className="flex flex-wrap gap-2">
@@ -1676,6 +1666,60 @@ export function Dashboard() {
               })}
             </div>
           )}
+
+          {/* Time-window nav, under the graph: prev/next on the extremities,
+              zoom in/out on the sides, the selected period in the middle. */}
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => shiftSelection(-1)}
+              disabled={!canPrev}
+              title={canPrev ? 'Previous period' : 'At the start of the data'}
+              className="rounded-lg border border-slate-300 px-2 py-1 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              onClick={zoomOut}
+              disabled={!canZoomOut}
+              title="Zoom out — double the range (within the data's span)"
+              className="rounded-lg border border-slate-300 px-2 py-1 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              －
+            </button>
+            <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+              {periodLabel(focusedRange)}
+            </span>
+            <button
+              type="button"
+              onClick={zoomIn}
+              disabled={!canZoomIn}
+              title="Zoom in — shrink to one unit, then switch to a finer unit"
+              className="rounded-lg border border-slate-300 px-2 py-1 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              ＋
+            </button>
+            <button
+              type="button"
+              onClick={() => shiftSelection(1)}
+              disabled={!canNext}
+              title={canNext ? 'Next period' : 'At the end of the data'}
+              className="rounded-lg border border-slate-300 px-2 py-1 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              →
+            </button>
+          </div>
+
+          {totalMatchingDays !== null && (
+            <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {totalMatchingDays.toLocaleString()}
+              </span>{' '}
+              day{totalMatchingDays === 1 ? '' : 's'} match the current range &amp; filters
+              {granularity !== 'all' && ' (hover a point for its day count)'}
+            </p>
+          )}
         </>
         )}
       </section>
@@ -1729,29 +1773,6 @@ export function Dashboard() {
               onChange={changeGranularity}
               maxLevel={maxLevel}
             />
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Zoom</span>
-                <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
-                  <button
-                    type="button"
-                    onClick={zoomIn}
-                    disabled={!canZoomIn}
-                    title="Zoom in — shrink to one unit, then switch to a finer unit"
-                    className="rounded px-2 py-0.5 text-xs font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
-                  >
-                    ＋
-                  </button>
-                  <button
-                    type="button"
-                    onClick={zoomOut}
-                    disabled={!canZoomOut}
-                    title="Zoom out — double the range (within the data's span)"
-                    className="rounded px-2 py-0.5 text-xs font-medium text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-slate-300 dark:hover:text-white dark:disabled:text-slate-600"
-                  >
-                    －
-                  </button>
-                </div>
-              </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Scale</span>
                 <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
@@ -1810,13 +1831,8 @@ export function Dashboard() {
           for the clicked point, or the whole active range when nothing is clicked. */}
       {dayCityColumns.length > 0 && (
         <DayStatsCard
-          title={periodLabel(focusedRange)}
           columns={dayCityColumns}
           onClear={focused ? () => setFocusedT(null) : undefined}
-          onPrev={() => shiftSelection(-1)}
-          onNext={() => shiftSelection(1)}
-          canPrev={canPrev}
-          canNext={canNext}
         />
       )}
 

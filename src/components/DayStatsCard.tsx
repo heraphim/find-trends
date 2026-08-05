@@ -14,13 +14,8 @@ export interface CityDayStats {
 }
 
 interface Props {
-  title: string // the selected period, e.g. "Tue, 12 Mar 2024"
   columns: CityDayStats[]
   onClear?: () => void
-  onPrev?: () => void // step the selected period back one unit
-  onNext?: () => void // step it forward one unit
-  canPrev?: boolean // false → the ← button is shown but disabled (at the data edge)
-  canNext?: boolean // false → the → button is shown but disabled
 }
 
 function plain(v: number): string {
@@ -105,7 +100,7 @@ function Row({ label, value, mirror }: { label: string; value: string; mirror?: 
   )
 }
 
-export function DayStatsCard({ title, columns, onClear, onPrev, onNext, canPrev, canNext }: Props) {
+export function DayStatsCard({ columns, onClear }: Props) {
   const [collapsed, toggle] = useCollapsed('day-stats')
 
   // Combined totals across every city column (sales-bearing columns only).
@@ -121,31 +116,6 @@ export function DayStatsCard({ title, columns, onClear, onPrev, onNext, canPrev,
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           <CollapseChevron collapsed={collapsed} onClick={toggle} label="selected period" />
           Selected period
-          {onPrev && (
-            <button
-              type="button"
-              onClick={onPrev}
-              disabled={!canPrev}
-              title={canPrev ? 'Previous period' : 'At the start of the data'}
-              className="rounded border border-slate-300 px-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              ←
-            </button>
-          )}
-          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
-            {title}
-          </span>
-          {onNext && (
-            <button
-              type="button"
-              onClick={onNext}
-              disabled={!canNext}
-              title={canNext ? 'Next period' : 'At the end of the data'}
-              className="rounded border border-slate-300 px-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              →
-            </button>
-          )}
         </h2>
         {onClear && (
           <button
